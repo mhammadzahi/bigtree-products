@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }} · Bigtree</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="/products" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
+    <div class="header-right">
+      {{ if .User }}<span class="muted user-email">{{ .User.Email }}</span>{{ end }}
+      <form method="post" action="/logout"><button class="btn btn-ghost">Sign out</button></form>
+    </div>
+  </header>
+
+  <main class="detail">
+    <a class="back-link" href="/products">← Back to catalog</a>
+
+    <div class="detail-grid">
+      <div class="detail-media">
+        {{ if .Product.ImageURL }}<img src="{{ .Product.ImageURL }}" alt="{{ .Product.Title }}">
+        {{ else }}<span class="media-placeholder large">No image</span>{{ end }}
+      </div>
+
+      <div class="detail-info">
+        {{ if .Product.SKU }}<span class="sku">SKU {{ .Product.SKU }}</span>{{ end }}
+        <h1>{{ .Product.Title }}</h1>
+
+        {{ if .Product.Collections }}
+        <div class="tags">
+          {{ range .Product.Collections }}<span class="tag">{{ .Name }}</span>{{ end }}
+        </div>
+        {{ end }}
+
+        <p class="price large">{{ .Product.PriceLabel }}</p>
+        <p class="stock {{ if .Product.InStock }}in{{ else }}out{{ end }}">
+          {{ if .Product.InStock }}In stock{{ else }}Out of stock{{ end }}
+        </p>
+
+        {{ if .Product.ShortDescription }}<p class="short-desc">{{ .Product.ShortDescription }}</p>{{ end }}
+
+        <button class="btn btn-primary btn-lg">Request sample / Enquire</button>
+      </div>
+    </div>
+
+    {{ if .Product.Description }}
+    <section class="description">
+      <h2>Description</h2>
+      <p>{{ .Product.Description }}</p>
+    </section>
+    {{ end }}
+  </main>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }} · Bigtree</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="auth-body">
+  <main class="auth-card">
+    <div class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></div>
+    <h1>Create account</h1>
+    <p class="muted">Register to browse pricing and request samples.</p>
+
+    {{ if .Error }}<div class="alert">{{ .Error }}</div>{{ end }}
+
+    <form method="post" action="/register" class="stack">
+      <label>Email
+        <input type="email" name="email" value="{{ .Email }}" required autofocus autocomplete="email">
+      </label>
+      <label>Password
+        <input type="password" name="password" required minlength="8" autocomplete="new-password">
+        <small class="muted">At least 8 characters.</small>
+      </label>
+      <button type="submit" class="btn btn-primary">Create account</button>
+    </form>
+
+    <p class="muted center">Already registered? <a href="/login">Sign in</a>.</p>
+  </main>
+</body>
+</html>

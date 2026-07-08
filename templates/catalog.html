@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }} · Bigtree</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <a href="/products" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
+    <div class="header-right">
+      {{ if .User }}<span class="muted user-email">{{ .User.Email }}</span>{{ end }}
+      <form method="post" action="/logout"><button class="btn btn-ghost">Sign out</button></form>
+    </div>
+  </header>
+
+  <div class="layout">
+    <!-- ================= SIDEBAR FILTERS ================= -->
+    <aside class="sidebar">
+      <form id="filter-form">
+        <div class="filter-block">
+          <input type="search" name="s" class="search-input" placeholder="Search title or SKU…"
+                 value="{{ .Selected.Search }}" autocomplete="off">
+        </div>
+
+        {{ if .Filters.Categories }}
+        <details class="accordion" open>
+          <summary>Categories</summary>
+          <ul class="facet-list">
+            <li><label class="facet"><input type="radio" name="category" value=""
+                {{ if eq .Selected.Category "" }}checked{{ end }}> <span>All categories</span></label></li>
+            {{ range .Filters.Categories }}
+            <li><label class="facet">
+              <input type="radio" name="category" value="{{ .Slug }}"
+                     {{ if eq $.Selected.Category .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Collections }}
+        <details class="accordion" open>
+          <summary>Collections</summary>
+          <ul class="facet-list">
+            <li><label class="facet"><input type="radio" name="collection" value=""
+                {{ if eq .Selected.Collection "" }}checked{{ end }}> <span>All collections</span></label></li>
+            {{ range .Filters.Collections }}
+            <li><label class="facet">
+              <input type="radio" name="collection" value="{{ .Slug }}"
+                     {{ if eq $.Selected.Collection .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Colors }}
+        <details class="accordion">
+          <summary>Finishes / Colour</summary>
+          <ul class="facet-list">
+            {{ range .Filters.Colors }}
+            <li><label class="facet">
+              <input type="checkbox" name="pa_color" value="{{ .Slug }}"
+                     {{ if contains $.Selected.Colors .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Compositions }}
+        <details class="accordion">
+          <summary>Composition</summary>
+          <ul class="facet-list">
+            {{ range .Filters.Compositions }}
+            <li><label class="facet">
+              <input type="checkbox" name="pa_composition" value="{{ .Slug }}"
+                     {{ if contains $.Selected.Compositions .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Applications }}
+        <details class="accordion">
+          <summary>Application</summary>
+          <ul class="facet-list">
+            {{ range .Filters.Applications }}
+            <li><label class="facet">
+              <input type="checkbox" name="pa_application" value="{{ .Slug }}"
+                     {{ if contains $.Selected.Applications .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Sizes }}
+        <details class="accordion">
+          <summary>Size</summary>
+          <ul class="facet-list">
+            {{ range .Filters.Sizes }}
+            <li><label class="facet">
+              <input type="checkbox" name="pa_size" value="{{ .Slug }}"
+                     {{ if contains $.Selected.Sizes .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        <div class="filter-actions">
+          <button type="submit" class="btn btn-primary">Apply filters</button>
+          <button type="button" id="clear-filters" class="btn btn-ghost">Clear all</button>
+        </div>
+      </form>
+    </aside>
+
+    <!-- ================= PRODUCT ARCHIVE ================= -->
+    <main class="archive">
+      <div class="toolbar">
+        <p class="result-count" id="result-count">
+          <strong>{{ .Result.Total }}</strong> products
+        </p>
+        <label class="sort">Sort
+          <select id="orderby" name="orderby">
+            <option value="newest"     {{ if eq .Selected.OrderBy "newest" }}selected{{ end }}>Newest</option>
+            <option value="price_asc"  {{ if eq .Selected.OrderBy "price_asc" }}selected{{ end }}>Price: low to high</option>
+            <option value="price_desc" {{ if eq .Selected.OrderBy "price_desc" }}selected{{ end }}>Price: high to low</option>
+            <option value="title_asc"  {{ if eq .Selected.OrderBy "title_asc" }}selected{{ end }}>Title: A–Z</option>
+            <option value="title_desc" {{ if eq .Selected.OrderBy "title_desc" }}selected{{ end }}>Title: Z–A</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="product-grid" class="product-grid" aria-live="polite">
+        {{ range .Result.Products }}
+        <article class="card">
+          <a class="card-media" href="/product/{{ .Slug }}">
+            {{ if .ImageURL }}<img src="{{ .ImageURL }}" alt="{{ .Title }}" loading="lazy">
+            {{ else }}<span class="media-placeholder">No image</span>{{ end }}
+            {{ if not .InStock }}<span class="badge-stock out">Out of stock</span>{{ end }}
+          </a>
+          <div class="card-body">
+            {{ if .SKU }}<span class="sku">SKU {{ .SKU }}</span>{{ end }}
+            <h3 class="card-title"><a href="/product/{{ .Slug }}">{{ .Title }}</a></h3>
+            {{ if .Collections }}
+            <div class="tags">
+              {{ range .Collections }}<span class="tag">{{ .Name }}</span>{{ end }}
+            </div>
+            {{ end }}
+            <div class="card-footer">
+              <span class="price">{{ .PriceLabel }}</span>
+              <a class="btn btn-sm btn-primary" href="/product/{{ .Slug }}">Request sample</a>
+            </div>
+          </div>
+        </article>
+        {{ else }}
+        <p class="empty">No products match these filters.</p>
+        {{ end }}
+      </div>
+
+      <nav class="pagination" id="pagination" aria-label="Pagination">
+        {{ if .Result.HasPrev }}<a class="page-link" data-page="{{ sub .Result.Page 1 }}" href="#">← Prev</a>{{ end }}
+        <span class="page-status">Page {{ .Result.Page }} of {{ if gt .Result.TotalPages 0 }}{{ .Result.TotalPages }}{{ else }}1{{ end }}</span>
+        {{ if .Result.HasNext }}<a class="page-link" data-page="{{ add .Result.Page 1 }}" href="#">Next →</a>{{ end }}
+      </nav>
+    </main>
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
