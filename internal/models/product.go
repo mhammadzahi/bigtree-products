@@ -38,15 +38,17 @@ const pageSize = 12
 // ProductFilter captures every query parameter the WooCommerce-style archive
 // accepts. Zero values mean "not filtered".
 type ProductFilter struct {
-	Search      string   // ?s=
-	Category    string   // ?category= (slug)
-	Collection  string   // ?collection= (slug)
-	Colors      []string // ?pa_color= (slug, repeatable)
-	Sizes       []string // ?pa_size=
+	Search       string   // ?s=
+	Category     string   // ?category= (slug)
+	Collection   string   // ?collection= (slug — WooCommerce tag)
+	Brands       []string // ?brand= (repeatable)
+	Colors       []string // ?pa_color= (repeatable)
 	Compositions []string // ?pa_composition=
 	Applications []string // ?pa_application=
-	OrderBy     string   // ?orderby=price_asc|price_desc|title_asc|title_desc|newest
-	Page        int      // ?page= (1-based)
+	Types        []string // ?pa_types=
+	Features     []string // ?pa_features=
+	OrderBy      string   // ?orderby=title_asc|title_desc|newest
+	Page         int      // ?page= (1-based)
 }
 
 // ProductPage is the paginated result set.
@@ -118,10 +120,12 @@ func buildWhere(f ProductFilter) (string, []any) {
 	if f.Collection != "" {
 		addTax("collection", f.Collection)
 	}
+	addTaxAny("brand", f.Brands)
 	addTaxAny("pa_color", f.Colors)
-	addTaxAny("pa_size", f.Sizes)
 	addTaxAny("pa_composition", f.Compositions)
 	addTaxAny("pa_application", f.Applications)
+	addTaxAny("pa_types", f.Types)
+	addTaxAny("pa_features", f.Features)
 
 	return strings.Join(clauses, " AND "), args
 }
@@ -261,6 +265,103 @@ func GetProductBySlug(ctx context.Context, db *sql.DB, slug string) (*Product, e
 		p.Collections = append(p.Collections, t)
 	}
 	return p, rows.Err()
+}
+
+// MetaKV is one ACF / postmeta key-value pair.
+type MetaKV struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// ProductFull is everything the staff dashboard shows for one product: the core
+// row, every taxonomy membership grouped by type, all ACF/meta, and (for
+// variable products) the child variations.
+type ProductFull struct {
+	Product
+	Taxonomies map[string][]Taxonomy `json:"taxonomies"` // type -> terms
+	Meta       []MetaKV              `json:"meta"`
+	Variations []Product             `json:"variations"`
+}
+
+// GetProductFull loads the complete dashboard record for a product slug.
+func GetProductFull(ctx context.Context, db *sql.DB, slug string) (*ProductFull, error) {
+	pf := &ProductFull{Taxonomies: map[string][]Taxonomy{}}
+	err := db.QueryRowContext(ctx, `
+		SELECT id, COALESCE(sku,''), title, slug,
+		       COALESCE(description,''), COALESCE(short_description,''),
+		       price, COALESCE(image_url,''), stock_status, product_type
+		FROM products WHERE slug = ? AND parent_id IS NULL`, slug).
+		Scan(&pf.ID, &pf.SKU, &pf.Title, &pf.Slug, &pf.Description,
+			&pf.ShortDescription, &pf.Price, &pf.ImageURL, &pf.StockStatus, &pf.ProductType)
+	if err != nil {
+		return nil, err
+	}
+
+	// All taxonomy memberships, grouped by type.
+	txRows, err := db.QueryContext(ctx, `
+		SELECT t.id, t.name, t.slug, t.type, t.count
+		FROM product_taxonomy pt JOIN taxonomies t ON t.id = pt.taxonomy_id
+		WHERE pt.product_id = ? ORDER BY t.type, t.name`, pf.ID)
+	if err != nil {
+		return nil, err
+	}
+	for txRows.Next() {
+		var t Taxonomy
+		if err := txRows.Scan(&t.ID, &t.Name, &t.Slug, &t.Type, &t.Count); err != nil {
+			txRows.Close()
+			return nil, err
+		}
+		pf.Taxonomies[t.Type] = append(pf.Taxonomies[t.Type], t)
+		if t.Type == "collection" {
+			pf.Collections = append(pf.Collections, t)
+		}
+	}
+	txRows.Close()
+	if err := txRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// All ACF / postmeta.
+	mRows, err := db.QueryContext(ctx, `
+		SELECT meta_key, COALESCE(meta_value,'')
+		FROM product_meta WHERE product_id = ? ORDER BY meta_key`, pf.ID)
+	if err != nil {
+		return nil, err
+	}
+	for mRows.Next() {
+		var kv MetaKV
+		if err := mRows.Scan(&kv.Key, &kv.Value); err != nil {
+			mRows.Close()
+			return nil, err
+		}
+		pf.Meta = append(pf.Meta, kv)
+	}
+	mRows.Close()
+	if err := mRows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Variations (child products).
+	vRows, err := db.QueryContext(ctx, `
+		SELECT id, COALESCE(sku,''), title, slug, price, COALESCE(image_url,''), stock_status
+		FROM products WHERE parent_id = ? ORDER BY title`, pf.ID)
+	if err != nil {
+		return nil, err
+	}
+	for vRows.Next() {
+		var v Product
+		if err := vRows.Scan(&v.ID, &v.SKU, &v.Title, &v.Slug, &v.Price, &v.ImageURL, &v.StockStatus); err != nil {
+			vRows.Close()
+			return nil, err
+		}
+		pf.Variations = append(pf.Variations, v)
+	}
+	vRows.Close()
+	if err := vRows.Err(); err != nil {
+		return nil, err
+	}
+
+	return pf, nil
 }
 
 func nonEmpty(in []string) []string {

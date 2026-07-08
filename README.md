@@ -25,7 +25,8 @@ internal/handlers/   auth, catalog, JSON API, auth middleware
 templates/           login, register, catalog, product, 404
 static/css, static/js
 schema.sql           DDL (WooCommerce-mirroring, de-normalised)
-seed.sql             realistic sample data + test admin
+fill_prodcut.go      WooCommerce importer (test / full modes)
+add_user.go          create/update a staff account
 ```
 
 ## Quick start
@@ -36,31 +37,59 @@ go mod tidy                 # or: make deps
 
 # 2. Configure the database connection in .env (DB_HOST, DB_USER, DB_PASS, ...)
 
-# 3. Load the schema + sample data. These run a small Go migrator that reads
-#    .env and connects itself — no mysql client, no password prompt.
+# 3. Load the schema (Go migrator reads .env and connects itself —
+#    no mysql client, no password prompt).
 make db
-make seed
 
-# 4. Run
+# 4. Create a staff account, then import products (see sections below)
+go run add_user.go web@bigtree-group.com 'w3b@BT'
+make import-test
+
+# 5. Run
 make run                    # http://localhost:8080
 ```
 
 All DB access — server and migrations alike — is driven entirely by `.env`
 (`cmd/migrate` reuses the same config loader as the server).
 
-**Test login:** `admin@bigtree-group.com` / `password` (change it).
+All accounts are equal — there are no roles; every user is company staff.
 
 ## Users are provisioned manually
 
-Self-service registration is disabled — accounts are inserted directly into the
-`users` table. Generate a bcrypt hash + a ready-to-run INSERT with the helper:
+Self-service registration is disabled. Create/update a staff account directly
+against the database (connection from `.env`):
 
 ```bash
-go run ./cmd/hashpw 'someone@bigtree-group.com' 'their-password' buyer
-# prints the bcrypt hash and an INSERT INTO users (...) VALUES (...); statement
+go run add_user.go <email> '<password>'
+go run add_user.go web@bigtree-group.com 'w3b@BT'
 ```
 
-Paste the printed statement into your SQL client. `role` is `buyer` or `admin`.
+Re-running with an existing email just resets that user's password. (The
+`cmd/hashpw` helper still exists if you'd rather generate a hash and INSERT by
+hand.)
+
+## Importing from WooCommerce
+
+Add your store's REST keys to `.env`:
+
+```
+WC_STORE_URL=https://your-store.com
+WC_CONSUMER_KEY=ck_xxxxxxxx
+WC_CONSUMER_SECRET=cs_xxxxxxxx
+```
+
+```bash
+go run dump_sample.go       # inspect: dumps 30 products to sample_products.json
+                            # + lists every ACF key / attribute seen
+
+go run fill_prodcut.go test # TEST mode: first 1000 products   (make import-test)
+go run fill_prodcut.go full # FULL mode: ALL products          (make import)
+```
+
+`fill_prodcut.go` is idempotent — re-run any time to resync. Product taxonomy
+`type` is a free-form string, so categories, sub-categories, custom collections
+and any attribute all fit without a schema change. ACF/custom fields land in
+`product_meta` and are shown on the product dashboard.
 
 ## How the WooCommerce mapping works
 

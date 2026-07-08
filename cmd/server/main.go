@@ -4,6 +4,8 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"strings"
+	"unicode"
 
 	"bigtree-products/internal/config"
 	"bigtree-products/internal/database"
@@ -69,5 +71,25 @@ func templateFuncs() template.FuncMap {
 		},
 		"add": func(a, b int) int { return a + b },
 		"sub": func(a, b int) int { return a - b },
+		// safeHTML renders first-party WooCommerce rich text (product
+		// descriptions) as HTML on the staff-only dashboard. Only ever feed it
+		// content that originates from the store, never user input.
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+		// label prettifies a taxonomy type or ACF key for display, e.g.
+		// "pa_color" -> "Color", "minimum_order_quantity" -> "Minimum Order Quantity".
+		"label": prettyLabel,
 	}
+}
+
+// prettyLabel turns a machine key into a human heading.
+func prettyLabel(s string) string {
+	s = strings.TrimPrefix(s, "pa_")
+	s = strings.NewReplacer("_", " ", "-", " ").Replace(s)
+	fields := strings.Fields(s)
+	for i, w := range fields {
+		r := []rune(w)
+		r[0] = unicode.ToUpper(r[0])
+		fields[i] = string(r)
+	}
+	return strings.Join(fields, " ")
 }

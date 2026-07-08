@@ -19,22 +19,20 @@ var ErrEmailTaken = errors.New("email already registered")
 // The same error is used for both cases to avoid leaking which emails exist.
 var ErrInvalidCredentials = errors.New("invalid email or password")
 
+// User is a staff account. Every account has the same access — there are no
+// roles (all users are company staff).
 type User struct {
 	ID           string
 	Email        string
 	PasswordHash string
-	Role         string
 	CreatedAt    time.Time
 }
 
 // CreateUser hashes the password with bcrypt and inserts a new account.
-func CreateUser(ctx context.Context, db *sql.DB, email, password, role string) (*User, error) {
+func CreateUser(ctx context.Context, db *sql.DB, email, password string) (*User, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 	if email == "" || password == "" {
 		return nil, errors.New("email and password are required")
-	}
-	if role == "" {
-		role = "buyer"
 	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
@@ -46,12 +44,11 @@ func CreateUser(ctx context.Context, db *sql.DB, email, password, role string) (
 		ID:           uuid.NewString(),
 		Email:        email,
 		PasswordHash: string(hash),
-		Role:         role,
 	}
 
 	_, err = db.ExecContext(ctx,
-		`INSERT INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)`,
-		u.ID, u.Email, u.PasswordHash, u.Role)
+		`INSERT INTO users (id, email, password_hash) VALUES (?, ?, ?)`,
+		u.ID, u.Email, u.PasswordHash)
 	if err != nil {
 		var me *mysql.MySQLError
 		if errors.As(err, &me) && me.Number == 1062 { // duplicate key
@@ -67,8 +64,8 @@ func Authenticate(ctx context.Context, db *sql.DB, email, password string) (*Use
 	email = strings.ToLower(strings.TrimSpace(email))
 	u := &User{}
 	err := db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users WHERE email = ?`, email).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt)
+		`SELECT id, email, password_hash, created_at FROM users WHERE email = ?`, email).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Run a dummy compare to keep timing roughly constant against enumeration.
 		bcrypt.CompareHashAndPassword([]byte("$2a$10$0000000000000000000000000000000000000000000000000000"), []byte(password))
@@ -87,8 +84,8 @@ func Authenticate(ctx context.Context, db *sql.DB, email, password string) (*Use
 func GetUserByID(ctx context.Context, db *sql.DB, id string) (*User, error) {
 	u := &User{}
 	err := db.QueryRowContext(ctx,
-		`SELECT id, email, password_hash, role, created_at FROM users WHERE id = ?`, id).
-		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Role, &u.CreatedAt)
+		`SELECT id, email, password_hash, created_at FROM users WHERE id = ?`, id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt)
 	if err != nil {
 		return nil, err
 	}

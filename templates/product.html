@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} · Bigtree</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=2">
 </head>
 <body>
   <header class="site-header">
@@ -18,6 +18,7 @@
   <main class="detail">
     <a class="back-link" href="/products">← Back to catalog</a>
 
+    <!-- ===== Header block ===== -->
     <div class="detail-grid">
       <div class="detail-media">
         {{ if .Product.ImageURL }}<img src="{{ .Product.ImageURL }}" alt="{{ .Product.Title }}">
@@ -27,28 +28,85 @@
       <div class="detail-info">
         {{ if .Product.SKU }}<span class="sku">SKU {{ .Product.SKU }}</span>{{ end }}
         <h1>{{ .Product.Title }}</h1>
-
-        {{ if .Product.Collections }}
-        <div class="tags">
-          {{ range .Product.Collections }}<span class="tag">{{ .Name }}</span>{{ end }}
-        </div>
-        {{ end }}
-
-        <p class="price large">{{ .Product.PriceLabel }}</p>
         <p class="stock {{ if .Product.InStock }}in{{ else }}out{{ end }}">
           {{ if .Product.InStock }}In stock{{ else }}Out of stock{{ end }}
         </p>
-
-        {{ if .Product.ShortDescription }}<p class="short-desc">{{ .Product.ShortDescription }}</p>{{ end }}
-
-        <button class="btn btn-primary btn-lg">Request sample / Enquire</button>
+        {{ if .Product.ShortDescription }}<div class="short-desc rich-text">{{ safeHTML .Product.ShortDescription }}</div>{{ end }}
       </div>
     </div>
 
+    <!-- ===== Core fields ===== -->
+    <section class="info-panel">
+      <h2>Product</h2>
+      <table class="kv-table">
+        <tbody>
+          <tr><th>ID</th><td>{{ .Product.ID }}</td></tr>
+          <tr><th>SKU</th><td>{{ if .Product.SKU }}{{ .Product.SKU }}{{ else }}<span class="muted">—</span>{{ end }}</td></tr>
+          <tr><th>Slug</th><td>{{ .Product.Slug }}</td></tr>
+          <tr><th>Type</th><td>{{ .Product.ProductType }}</td></tr>
+          <tr><th>Stock status</th><td>{{ .Product.StockStatus }}</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ===== Taxonomies (categories, collections, attributes, custom) ===== -->
+    {{ if .Product.Taxonomies }}
+    <section class="info-panel">
+      <h2>Taxonomies &amp; attributes</h2>
+      {{ range $type, $terms := .Product.Taxonomies }}
+      <div class="tax-group">
+        <span class="tax-type">{{ label $type }}</span>
+        <div class="tags">
+          {{ range $terms }}<span class="tag">{{ .Name }}</span>{{ end }}
+        </div>
+      </div>
+      {{ end }}
+    </section>
+    {{ end }}
+
+    <!-- ===== ACF / custom fields ===== -->
+    {{ if .Product.Meta }}
+    <section class="info-panel">
+      <h2>Custom fields (ACF / meta)</h2>
+      <div class="table-scroll">
+        <table class="kv-table meta">
+          <thead><tr><th>Field</th><th>Value</th></tr></thead>
+          <tbody>
+            {{ range .Product.Meta }}
+            <tr><th>{{ label .Key }}</th><td>{{ .Value }}</td></tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {{ end }}
+
+    <!-- ===== Variations ===== -->
+    {{ if .Product.Variations }}
+    <section class="info-panel">
+      <h2>Variations ({{ len .Product.Variations }})</h2>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>SKU</th><th>Title</th><th>Stock</th></tr></thead>
+          <tbody>
+            {{ range .Product.Variations }}
+            <tr>
+              <td>{{ if .SKU }}{{ .SKU }}{{ else }}<span class="muted">—</span>{{ end }}</td>
+              <td>{{ .Title }}</td>
+              <td><span class="stock-pill {{ if .InStock }}in{{ else }}out{{ end }}">{{ if .InStock }}In stock{{ else }}Out of stock{{ end }}</span></td>
+            </tr>
+            {{ end }}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {{ end }}
+
+    <!-- ===== Description ===== -->
     {{ if .Product.Description }}
-    <section class="description">
+    <section class="info-panel">
       <h2>Description</h2>
-      <p>{{ .Product.Description }}</p>
+      <div class="rich-text">{{ safeHTML .Product.Description }}</div>
     </section>
     {{ end }}
   </main>

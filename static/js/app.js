@@ -30,7 +30,7 @@
     if (collection) params.set("collection", collection);
 
     // repeatable checkbox facets
-    ["pa_color", "pa_size", "pa_composition", "pa_application"].forEach((key) => {
+    ["brand", "pa_color", "pa_composition", "pa_application", "pa_types", "pa_features"].forEach((key) => {
       data.getAll(key).forEach((v) => v && params.append(key, v));
     });
 
@@ -46,32 +46,32 @@
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
-  function priceLabel(p) {
-    return p && p.price > 0 ? "$" + Number(p.price).toFixed(2) : "Price on request";
-  }
-
   /* ---- render one product card ------------------------------------------- */
   function cardHTML(p) {
     const slug = encodeURIComponent(p.slug);
     const media = p.image_url
       ? `<img src="${esc(p.image_url)}" alt="${esc(p.title)}" loading="lazy">`
       : `<span class="media-placeholder">No image</span>`;
-    const stock = p.stock_status !== "in_stock"
+    const inStock = p.stock_status === "in_stock";
+    const stockBadge = !inStock
       ? `<span class="badge-stock out">Out of stock</span>` : "";
+    const stockPill = inStock
+      ? `<span class="stock-pill in">In stock</span>`
+      : `<span class="stock-pill out">Out of stock</span>`;
     const sku = p.sku ? `<span class="sku">SKU ${esc(p.sku)}</span>` : "";
     const tags = (p.collections || []).length
       ? `<div class="tags">${p.collections.map((t) => `<span class="tag">${esc(t.name)}</span>`).join("")}</div>`
       : "";
 
     return `<article class="card">
-      <a class="card-media" href="/product/${slug}">${media}${stock}</a>
+      <a class="card-media" href="/product/${slug}">${media}${stockBadge}</a>
       <div class="card-body">
         ${sku}
         <h3 class="card-title"><a href="/product/${slug}">${esc(p.title)}</a></h3>
         ${tags}
         <div class="card-footer">
-          <span class="price">${priceLabel(p)}</span>
-          <a class="btn btn-sm btn-primary" href="/product/${slug}">Request sample</a>
+          ${stockPill}
+          <a class="btn btn-sm btn-primary" href="/product/${slug}">View details</a>
         </div>
       </div>
     </article>`;

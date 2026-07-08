@@ -8,9 +8,9 @@
   --ink:       #1d2430;
   --ink-soft:  #5b6472;
   --line:      #e4e7ec;
-  --brand:     #16794c;
-  --brand-ink: #0f5c39;
-  --accent:    #eef7f1;
+  --brand:     #562b45;
+  --brand-ink: #3d1e31;
+  --accent:    #f4edf1;
   --radius:    12px;
   --shadow:    0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.1);
   --shadow-lg: 0 8px 24px rgba(16,24,40,.12);
@@ -184,6 +184,42 @@ img { max-width: 100%; display: block; }
 .short-desc { color: var(--ink-soft); }
 .description { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.5rem; margin-top: 1.5rem; }
 .center-block { text-align: center; padding: 4rem 1rem; }
+
+/* ---------- Stock pill (replaces price/CTA on cards) ---------------------- */
+.stock-pill {
+  font-size: .75rem; font-weight: 700; padding: .2rem .6rem; border-radius: 999px;
+  border: 1px solid transparent; white-space: nowrap;
+}
+.stock-pill.in  { background: var(--accent); color: var(--brand-ink); border-color: #e4d3de; }
+.stock-pill.out { background: #fdecec; color: #b42318; border-color: #f5c2c0; }
+
+/* ---------- Dashboard info panels ----------------------------------------- */
+.info-panel {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 1.25rem 1.5rem; margin-top: 1.25rem;
+}
+.info-panel h2 { margin: 0 0 1rem; font-size: 1.1rem; }
+.table-scroll { overflow-x: auto; }
+
+.kv-table, .data-table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+.kv-table th, .kv-table td, .data-table th, .data-table td {
+  text-align: left; padding: .55rem .75rem; border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.kv-table th { width: 220px; color: var(--ink-soft); font-weight: 600; white-space: nowrap; }
+.kv-table.meta th { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+.data-table thead th { color: var(--ink-soft); font-weight: 700; background: var(--bg); }
+.data-table tbody tr:hover { background: var(--accent); }
+
+.tax-group { display: flex; align-items: baseline; gap: .75rem; padding: .5rem 0; border-bottom: 1px solid var(--line); }
+.tax-group:last-child { border-bottom: 0; }
+.tax-type {
+  min-width: 140px; font-size: .78rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .03em; color: var(--brand-ink);
+}
+.rich-text { line-height: 1.6; }
+.rich-text img { border-radius: 8px; margin: .5rem 0; }
+.rich-text ul, .rich-text ol { padding-left: 1.25rem; }
 
 /* ---------- Loading state ------------------------------------------------- */
 .product-grid.loading { opacity: .5; pointer-events: none; }

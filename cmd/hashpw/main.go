@@ -1,13 +1,12 @@
 // hashpw generates a bcrypt hash and a ready-to-run INSERT statement so you can
-// provision users manually in the database (registration is disabled).
+// provision staff accounts manually in the database (registration is disabled).
 //
-//	go run ./cmd/hashpw 'admin@bigtree-group.com' 'SuperSecret123' admin
+//	go run ./cmd/hashpw 'someone@bigtree-group.com' 'SuperSecret123'
 //
-// Arguments: <email> <password> [role]   role defaults to "buyer".
+// Arguments: <email> <password>
 package main
 
 import (
-	"crypto/rand"
 	"fmt"
 	"os"
 
@@ -17,14 +16,10 @@ import (
 
 func main() {
 	if len(os.Args) < 3 {
-		fmt.Fprintln(os.Stderr, "usage: hashpw <email> <password> [role]")
+		fmt.Fprintln(os.Stderr, "usage: hashpw <email> <password>")
 		os.Exit(1)
 	}
 	email, password := os.Args[1], os.Args[2]
-	role := "buyer"
-	if len(os.Args) > 3 {
-		role = os.Args[3]
-	}
 
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
@@ -33,10 +28,9 @@ func main() {
 	}
 
 	id := uuid.NewString()
-	_ = rand.Reader // uuid already uses crypto/rand
 
 	fmt.Printf("\nbcrypt hash:\n%s\n\n", hash)
 	fmt.Printf("SQL to insert this user:\n")
-	fmt.Printf("INSERT INTO users (id, email, password_hash, role)\n")
-	fmt.Printf("VALUES ('%s', '%s', '%s', '%s');\n\n", id, email, hash, role)
+	fmt.Printf("INSERT INTO users (id, email, password_hash)\n")
+	fmt.Printf("VALUES ('%s', '%s', '%s');\n\n", id, email, hash)
 }

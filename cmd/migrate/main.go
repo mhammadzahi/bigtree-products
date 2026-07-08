@@ -3,7 +3,6 @@
 // mysql client and no password prompt required.
 //
 //	go run ./cmd/migrate schema.sql
-//	go run ./cmd/migrate schema.sql seed.sql
 package main
 
 import (

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} · Bigtree</title>
-  <link rel="stylesheet" href="/static/css/style.css">
+  <link rel="stylesheet" href="/static/css/style.css?v=2">
 </head>
 <body>
   <header class="site-header">
@@ -58,9 +58,39 @@
         </details>
         {{ end }}
 
+        {{ if .Filters.Brands }}
+        <details class="accordion">
+          <summary>Brand</summary>
+          <ul class="facet-list">
+            {{ range .Filters.Brands }}
+            <li><label class="facet">
+              <input type="checkbox" name="brand" value="{{ .Slug }}"
+                     {{ if contains $.Selected.Brands .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Types }}
+        <details class="accordion">
+          <summary>Type</summary>
+          <ul class="facet-list">
+            {{ range .Filters.Types }}
+            <li><label class="facet">
+              <input type="checkbox" name="pa_types" value="{{ .Slug }}"
+                     {{ if contains $.Selected.Types .Slug }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
         {{ if .Filters.Colors }}
         <details class="accordion">
-          <summary>Finishes / Colour</summary>
+          <summary>Colour</summary>
           <ul class="facet-list">
             {{ range .Filters.Colors }}
             <li><label class="facet">
@@ -103,14 +133,14 @@
         </details>
         {{ end }}
 
-        {{ if .Filters.Sizes }}
+        {{ if .Filters.Features }}
         <details class="accordion">
-          <summary>Size</summary>
+          <summary>Features</summary>
           <ul class="facet-list">
-            {{ range .Filters.Sizes }}
+            {{ range .Filters.Features }}
             <li><label class="facet">
-              <input type="checkbox" name="pa_size" value="{{ .Slug }}"
-                     {{ if contains $.Selected.Sizes .Slug }}checked{{ end }}>
+              <input type="checkbox" name="pa_features" value="{{ .Slug }}"
+                     {{ if contains $.Selected.Features .Slug }}checked{{ end }}>
               <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
             </label></li>
             {{ end }}
@@ -134,8 +164,6 @@
         <label class="sort">Sort
           <select id="orderby" name="orderby">
             <option value="newest"     {{ if eq .Selected.OrderBy "newest" }}selected{{ end }}>Newest</option>
-            <option value="price_asc"  {{ if eq .Selected.OrderBy "price_asc" }}selected{{ end }}>Price: low to high</option>
-            <option value="price_desc" {{ if eq .Selected.OrderBy "price_desc" }}selected{{ end }}>Price: high to low</option>
             <option value="title_asc"  {{ if eq .Selected.OrderBy "title_asc" }}selected{{ end }}>Title: A–Z</option>
             <option value="title_desc" {{ if eq .Selected.OrderBy "title_desc" }}selected{{ end }}>Title: Z–A</option>
           </select>
@@ -159,8 +187,10 @@
             </div>
             {{ end }}
             <div class="card-footer">
-              <span class="price">{{ .PriceLabel }}</span>
-              <a class="btn btn-sm btn-primary" href="/product/{{ .Slug }}">Request sample</a>
+              <span class="stock-pill {{ if .InStock }}in{{ else }}out{{ end }}">
+                {{ if .InStock }}In stock{{ else }}Out of stock{{ end }}
+              </span>
+              <a class="btn btn-sm btn-primary" href="/product/{{ .Slug }}">View details</a>
             </div>
           </div>
         </article>

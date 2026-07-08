@@ -1,0 +1,6 @@
+make db                                       # (re)build schema
+go run add_user.go web@bigtree-group.com 'w3b@BT'
+make import-test                              # 1000 products to validate
+make run                                      # log in as web@bigtree-group.com / w3b@BT
+# once happy:  make import                    # full catalog
+

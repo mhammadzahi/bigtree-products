@@ -20,7 +20,6 @@ CREATE TABLE `users` (
   `id`            VARCHAR(36)  NOT NULL,                    -- UUID v4
   `email`         VARCHAR(255) NOT NULL,
   `password_hash` VARCHAR(255) NOT NULL,                    -- bcrypt
-  `role`          ENUM('admin','buyer') NOT NULL DEFAULT 'buyer',
   `created_at`    TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_users_email` (`email`)
@@ -75,16 +74,19 @@ CREATE TABLE `products` (
 
 -- -----------------------------------------------------------------------------
 -- taxonomies — merges wp_terms + wp_term_taxonomy into one addressable row.
---   `type` names the WooCommerce taxonomy/attribute a term belongs to.
+--   `type` is the WooCommerce taxonomy slug the term belongs to. It is a free
+--   VARCHAR (not an ENUM) so ANY taxonomy the store exposes fits without a
+--   migration: product_cat -> 'category', product_tag -> 'tag', a custom
+--   'collection'/'brand' taxonomy, or any global attribute ('pa_color', ...).
+--   `parent_id` carries the hierarchy so sub-categories nest under categories.
 -- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `taxonomies`;
 CREATE TABLE `taxonomies` (
   `id`          BIGINT UNSIGNED NOT NULL,                   -- = wp_term_taxonomy.term_taxonomy_id
-  `name`        VARCHAR(100)    NOT NULL,
-  `slug`        VARCHAR(100)    NOT NULL,
-  `type`        ENUM('category','tag','collection',
-                     'pa_color','pa_size','pa_composition','pa_application') NOT NULL,
-  `parent_id`   BIGINT UNSIGNED DEFAULT NULL,               -- hierarchical categories
+  `name`        VARCHAR(191)    NOT NULL,
+  `slug`        VARCHAR(191)    NOT NULL,
+  `type`        VARCHAR(50)     NOT NULL,
+  `parent_id`   BIGINT UNSIGNED DEFAULT NULL,               -- hierarchical (sub-categories)
   `count`       INT UNSIGNED    NOT NULL DEFAULT 0,          -- cached product count
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_taxonomies_type_slug` (`type`, `slug`),

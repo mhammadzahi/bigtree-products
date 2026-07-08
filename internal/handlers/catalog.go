@@ -48,10 +48,10 @@ func (h *Handler) APIProducts(c *gin.Context) {
 	c.JSON(http.StatusOK, page)
 }
 
-// ProductDetail renders a single product permalink.
+// ProductDetail renders the full product-info dashboard for one product.
 func (h *Handler) ProductDetail(c *gin.Context) {
 	user, _ := currentUser(c)
-	product, err := models.GetProductBySlug(c.Request.Context(), h.DB, c.Param("slug"))
+	product, err := models.GetProductFull(c.Request.Context(), h.DB, c.Param("slug"))
 	if errors.Is(err, sql.ErrNoRows) {
 		c.HTML(http.StatusNotFound, "notfound.html", gin.H{"Title": "Not found", "User": user})
 		return
