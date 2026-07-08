@@ -32,8 +32,6 @@ func main() {
 	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusSeeOther, "/products") })
 	r.GET("/login", h.ShowLogin)
 	r.POST("/login", h.Login)
-	r.GET("/register", h.ShowRegister)
-	r.POST("/register", h.Register)
 	r.POST("/logout", h.Logout)
 
 	// --- authenticated storefront ------------------------------------------

@@ -1,22 +1,21 @@
-DB_NAME ?= bigtree
-MYSQL   ?= mysql
+# All targets read DB connection settings from .env via the Go config loader —
+# no local mysql client, no password prompt.
 
-.PHONY: deps db seed run build clean
+.PHONY: deps db schema seed run build clean
 
 ## deps: download Go module dependencies
 deps:
 	go mod tidy
 
-## db: create the database and load the schema
-db:
-	$(MYSQL) -e "CREATE DATABASE IF NOT EXISTS $(DB_NAME) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
-	$(MYSQL) $(DB_NAME) < schema.sql
+## db: load schema.sql into the database (connection from .env)
+db schema:
+	go run ./cmd/migrate schema.sql
 
-## seed: load sample data (run after `make db`)
+## seed: load sample data — run after `make db`
 seed:
-	$(MYSQL) $(DB_NAME) < seed.sql
+	go run ./cmd/migrate seed.sql
 
-## run: start the server (reads .env-style vars from the environment)
+## run: start the server
 run:
 	go run ./cmd/server
 

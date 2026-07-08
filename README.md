@@ -32,20 +32,35 @@ seed.sql             realistic sample data + test admin
 
 ```bash
 # 1. Dependencies
-go mod tidy            # or: make deps
+go mod tidy                 # or: make deps
 
-# 2. Database (MariaDB running locally)
-make db                # create DB + load schema.sql
-make seed              # load sample data
+# 2. Configure the database connection in .env (DB_HOST, DB_USER, DB_PASS, ...)
 
-# 3. Configure (optional — defaults target root@127.0.0.1/bigtree)
-cp .env.example .env   # then export the vars, or use a loader
+# 3. Load the schema + sample data. These run a small Go migrator that reads
+#    .env and connects itself — no mysql client, no password prompt.
+make db
+make seed
 
 # 4. Run
-make run               # http://localhost:8080
+make run                    # http://localhost:8080
 ```
 
+All DB access — server and migrations alike — is driven entirely by `.env`
+(`cmd/migrate` reuses the same config loader as the server).
+
 **Test login:** `admin@bigtree-group.com` / `password` (change it).
+
+## Users are provisioned manually
+
+Self-service registration is disabled — accounts are inserted directly into the
+`users` table. Generate a bcrypt hash + a ready-to-run INSERT with the helper:
+
+```bash
+go run ./cmd/hashpw 'someone@bigtree-group.com' 'their-password' buyer
+# prints the bcrypt hash and an INSERT INTO users (...) VALUES (...); statement
+```
+
+Paste the printed statement into your SQL client. `role` is `buyer` or `admin`.
 
 ## How the WooCommerce mapping works
 
@@ -94,8 +109,8 @@ query (no N+1). Sort keys are whitelisted server-side.
 
 | Method | Path                  | Auth | Purpose                    |
 |--------|-----------------------|------|----------------------------|
-| GET    | `/login` `/register`  | no   | auth pages                 |
-| POST   | `/login` `/register`  | no   | authenticate / create user |
+| GET    | `/login`              | no   | login page                 |
+| POST   | `/login`              | no   | authenticate               |
 | POST   | `/logout`             | no   | revoke session             |
 | GET    | `/products`           | yes  | SSR catalog                |
 | GET    | `/product/:slug`      | yes  | product permalink          |

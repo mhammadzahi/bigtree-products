@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"net/http"
 
 	"bigtree-products/internal/models"
@@ -12,40 +11,6 @@ import (
 // ShowLogin renders the login page.
 func (h *Handler) ShowLogin(c *gin.Context) {
 	c.HTML(http.StatusOK, "login.html", gin.H{"Title": "Sign in"})
-}
-
-// ShowRegister renders the registration page.
-func (h *Handler) ShowRegister(c *gin.Context) {
-	c.HTML(http.StatusOK, "register.html", gin.H{"Title": "Create account"})
-}
-
-// Register creates a buyer account then logs the user straight in.
-func (h *Handler) Register(c *gin.Context) {
-	email := c.PostForm("email")
-	password := c.PostForm("password")
-
-	if len(password) < 8 {
-		c.HTML(http.StatusBadRequest, "register.html", gin.H{
-			"Title": "Create account",
-			"Error": "Password must be at least 8 characters.",
-			"Email": email,
-		})
-		return
-	}
-
-	user, err := models.CreateUser(c.Request.Context(), h.DB, email, password, "buyer")
-	if err != nil {
-		msg := "Could not create account."
-		if errors.Is(err, models.ErrEmailTaken) {
-			msg = "That email is already registered."
-		}
-		c.HTML(http.StatusBadRequest, "register.html", gin.H{
-			"Title": "Create account", "Error": msg, "Email": email,
-		})
-		return
-	}
-
-	h.startSession(c, user, "/products")
 }
 
 // Login authenticates and starts a session.

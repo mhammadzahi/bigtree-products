@@ -25,8 +25,7 @@ SET FOREIGN_KEY_CHECKS = 1;
 --    change it immediately in any real deployment.)
 -- -----------------------------------------------------------------------------
 INSERT INTO users (id, email, password_hash, role) VALUES
-  ('00000000-0000-4000-8000-000000000001', 'admin@bigtree-group.com',
-   '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'admin'),
+  ('430394e6-39e8-4c29-af84-8567dced996b', 'admin@bigtree-group.com', '$2a$10$jNwvtQHoYlzSrvlHi0rbB.9vxjLBM8p7dtOwt8ZmnlCUdteCLPq8O', 'admin'),
   ('00000000-0000-4000-8000-000000000002', 'buyer@example.com',
    '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'buyer');
 
