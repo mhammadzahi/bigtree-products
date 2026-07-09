@@ -25,6 +25,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"html"
 	"log"
 	"net/http"
 	"net/url"
@@ -37,6 +38,12 @@ import (
 	"bigtree-products/internal/config"
 	"bigtree-products/internal/database"
 )
+
+// clean trims and decodes HTML entities so names/titles store as plain text
+// ("Nails &amp; Buttons" -> "Nails & Buttons"), rendered correctly by templates.
+func clean(s string) string {
+	return html.UnescapeString(strings.TrimSpace(s))
+}
 
 // ---------------------------------------------------------------------------
 // WooCommerce REST payloads (only the fields we consume)
@@ -285,7 +292,7 @@ func (imp *importer) getOrAddTax(typ, slug, name string, realID int64) string {
 		imp.attrSeq++
 		id = imp.attrSeq
 	}
-	imp.taxByKey[key] = &taxo{id: id, typ: typ, slug: slug, name: name}
+	imp.taxByKey[key] = &taxo{id: id, typ: typ, slug: slug, name: clean(name)}
 	return key
 }
 
@@ -402,7 +409,7 @@ func (imp *importer) upsertProduct(ctx context.Context, p wooProduct) error {
 		ptype = "variable"
 	}
 	_, err := imp.db.ExecContext(ctx, upsertProductSQL,
-		p.ID, p.SKU, p.Name, p.Slug, p.Description, p.ShortDescription,
+		p.ID, p.SKU, clean(p.Name), p.Slug, p.Description, p.ShortDescription,
 		parsePrice(p.Price), firstImage(p.Images), mapStock(p.StockStatus),
 		ptype, nullParent(p.Parent))
 	return err
@@ -509,7 +516,7 @@ func (imp *importer) importCategoryTree(ctx context.Context) error {
 			INSERT INTO taxonomies (id, name, slug, type, parent_id)
 			VALUES (?, ?, ?, 'category', NULL)
 			ON DUPLICATE KEY UPDATE name = VALUES(name), slug = VALUES(slug)`,
-			c.ID, c.Name, c.Slug); err != nil {
+			c.ID, clean(c.Name), c.Slug); err != nil {
 			return err
 		}
 	}
@@ -543,7 +550,7 @@ func (imp *importer) importMeta(ctx context.Context, productID int64, metas []wo
 		if m.Key == "" || strings.HasPrefix(m.Key, "_") || metaDenylist[m.Key] {
 			continue
 		}
-		val := metaValueString(m.Value)
+		val := clean(metaValueString(m.Value))
 		if val == "" {
 			continue
 		}

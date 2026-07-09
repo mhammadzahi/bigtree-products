@@ -20,6 +20,7 @@ type Product struct {
 	StockStatus      string     `json:"stock_status"`
 	ProductType      string     `json:"product_type"`
 	Collections      []Taxonomy `json:"collections"`
+	Categories       []Taxonomy `json:"categories"`
 }
 
 // PriceLabel renders the price for templates ("On request" when zero).
@@ -33,19 +34,39 @@ func (p Product) PriceLabel() string {
 // InStock is a template helper.
 func (p Product) InStock() bool { return p.StockStatus == "in_stock" }
 
+// LastCollection returns the product's most recent collection (the last in the
+// id-ordered Collections slice), or nil when it has none.
+func (p Product) LastCollection() *Taxonomy {
+	if len(p.Collections) == 0 {
+		return nil
+	}
+	return &p.Collections[len(p.Collections)-1]
+}
+
+// PrimaryCategory returns the product's most specific (leaf) category — the one
+// shown as the card's collection chip, e.g. "FR Night 1000 Blackout".
+// Categories are loaded ordered top-level-first, so the last is the deepest.
+func (p Product) PrimaryCategory() *Taxonomy {
+	if len(p.Categories) == 0 {
+		return nil
+	}
+	return &p.Categories[len(p.Categories)-1]
+}
+
 const pageSize = 12
 
 // ProductFilter captures every query parameter the WooCommerce-style archive
 // accepts. Zero values mean "not filtered".
+// Facet values are matched by NAME (not slug) so duplicate-named terms collapse
+// to a single option and selecting it unions them.
 type ProductFilter struct {
 	Search       string   // ?s=
-	Category     string   // ?category= (slug)
-	Collection   string   // ?collection= (slug — WooCommerce tag)
+	Collection   string   // ?collection= (leaf category name)
+	Category     string   // ?category=   (parent category name)
 	Brands       []string // ?brand= (repeatable)
-	Colors       []string // ?pa_color= (repeatable)
-	Compositions []string // ?pa_composition=
 	Applications []string // ?pa_application=
-	Types        []string // ?pa_types=
+	Colors       []string // ?pa_color=
+	Compositions []string // ?pa_composition=
 	Features     []string // ?pa_features=
 	OrderBy      string   // ?orderby=title_asc|title_desc|newest
 	Page         int      // ?page= (1-based)
@@ -53,13 +74,14 @@ type ProductFilter struct {
 
 // ProductPage is the paginated result set.
 type ProductPage struct {
-	Products    []Product `json:"products"`
-	Total       int       `json:"total"`
-	Page        int       `json:"page"`
-	PageSize    int       `json:"page_size"`
-	TotalPages  int       `json:"total_pages"`
-	HasPrev     bool      `json:"has_prev"`
-	HasNext     bool      `json:"has_next"`
+	Products   []Product     `json:"products"`
+	Total      int           `json:"total"`
+	Page       int           `json:"page"`
+	PageSize   int           `json:"page_size"`
+	TotalPages int           `json:"total_pages"`
+	HasPrev    bool          `json:"has_prev"`
+	HasNext    bool          `json:"has_next"`
+	Facets     *FilterGroups `json:"facets,omitempty"` // available options for the current result set
 }
 
 // orderClauses whitelists sort options — user input never reaches the ORDER BY
@@ -73,9 +95,9 @@ var orderClauses = map[string]string{
 }
 
 // buildWhere turns a ProductFilter into a parameterised WHERE clause fragment
-// plus its ordered args. Every taxonomy facet becomes an EXISTS sub-query so
-// multiple facets combine with AND semantics (a product must match them all),
-// exactly like WooCommerce's layered nav.
+// plus its ordered args. EVERY selected value (across AND within a facet) becomes
+// its own EXISTS sub-query, so all conditions combine with strict AND semantics —
+// a product must satisfy every single one.
 func buildWhere(f ProductFilter) (string, []any) {
 	// Only ever list top-level products (parent_id IS NULL); variations are
 	// children and shouldn't appear as their own cards, mirroring the storefront.
@@ -90,44 +112,154 @@ func buildWhere(f ProductFilter) (string, []any) {
 		args = append(args, like, like)
 	}
 
-	addTax := func(typ, slug string) {
+	// addByName: product must have a term of this type with this exact name.
+	addByName := func(typ, name string) {
 		clauses = append(clauses, `EXISTS (
 			SELECT 1 FROM product_taxonomy pt
 			JOIN taxonomies t ON t.id = pt.taxonomy_id
-			WHERE pt.product_id = p.id AND t.type = ? AND t.slug = ?)`)
-		args = append(args, typ, slug)
+			WHERE pt.product_id = p.id AND t.type = ? AND t.name = ?)`)
+		args = append(args, typ, name)
 	}
-	addTaxAny := func(typ string, slugs []string) {
-		// Repeatable facet: product must match AT LEAST ONE of the chosen terms.
-		clean := nonEmpty(slugs)
-		if len(clean) == 0 {
-			return
-		}
-		ph := strings.TrimSuffix(strings.Repeat("?,", len(clean)), ",")
-		clauses = append(clauses, `EXISTS (
-			SELECT 1 FROM product_taxonomy pt
-			JOIN taxonomies t ON t.id = pt.taxonomy_id
-			WHERE pt.product_id = p.id AND t.type = ? AND t.slug IN (`+ph+`))`)
-		args = append(args, typ)
-		for _, s := range clean {
-			args = append(args, s)
+	// addAllByName: AND — product must have EVERY selected value.
+	addAllByName := func(typ string, names []string) {
+		for _, n := range nonEmpty(names) {
+			addByName(typ, n)
 		}
 	}
 
-	if f.Category != "" {
-		addTax("category", f.Category)
-	}
+	// Collections = the product's own (leaf) category, matched by name.
 	if f.Collection != "" {
-		addTax("collection", f.Collection)
+		addByName("category", f.Collection)
 	}
-	addTaxAny("brand", f.Brands)
-	addTaxAny("pa_color", f.Colors)
-	addTaxAny("pa_composition", f.Compositions)
-	addTaxAny("pa_application", f.Applications)
-	addTaxAny("pa_types", f.Types)
-	addTaxAny("pa_features", f.Features)
+	// Categories = the PARENT of the product's leaf category, matched by name.
+	if f.Category != "" {
+		clauses = append(clauses, `EXISTS (
+			SELECT 1 FROM product_taxonomy pt
+			JOIN taxonomies leaf   ON leaf.id = pt.taxonomy_id AND leaf.type = 'category'
+			JOIN taxonomies parent ON parent.id = leaf.parent_id
+			WHERE pt.product_id = p.id AND parent.name = ?)`)
+		args = append(args, f.Category)
+	}
+
+	addAllByName("brand", f.Brands)
+	addAllByName("pa_application", f.Applications)
+	addAllByName("pa_color", f.Colors)
+	addAllByName("pa_composition", f.Compositions)
+	addAllByName("pa_features", f.Features)
 
 	return strings.Join(clauses, " AND "), args
+}
+
+// LoadFacets computes the available filter options for the CURRENT filtered
+// result set: every taxonomy value still reachable, with a live product count.
+// Because options are derived from the matching set, selecting any of them always
+// yields results — the "No products match" dead-end can't happen. Values are
+// grouped by name (deduplicated) and empty options are omitted.
+func LoadFacets(ctx context.Context, db *sql.DB, f ProductFilter) (*FilterGroups, error) {
+	// Multi-select facets are computed with ALL current filters applied, so
+	// AND-adding any shown option still returns results. The single-select
+	// facets (collection, category) are each computed with their OWN selection
+	// removed, so the user can switch between options.
+	where, args := buildWhere(f)
+
+	fCol := f
+	fCol.Collection = ""
+	whereCol, argsCol := buildWhere(fCol)
+
+	fCat := f
+	fCat.Category = ""
+	whereCat, argsCat := buildWhere(fCat)
+
+	fg := &FilterGroups{}
+
+	// Brands + attribute facets, deduplicated by name.
+	rows, err := db.QueryContext(ctx, `
+		SELECT t.type, t.name, COUNT(DISTINCT p.id) AS cnt
+		FROM products p
+		JOIN product_taxonomy pt ON pt.product_id = p.id
+		JOIN taxonomies t        ON t.id = pt.taxonomy_id
+		WHERE `+where+`
+		  AND t.type IN ('brand','pa_application','pa_color','pa_composition','pa_features')
+		GROUP BY t.type, t.name
+		ORDER BY t.name`, args...)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var typ string
+		var t Taxonomy
+		if err := rows.Scan(&typ, &t.Name, &t.Count); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if isNA(t.Name) {
+			continue
+		}
+		switch typ {
+		case "brand":
+			fg.Brands = append(fg.Brands, t)
+		case "pa_application":
+			fg.Applications = append(fg.Applications, t)
+		case "pa_color":
+			fg.Colors = append(fg.Colors, t)
+		case "pa_composition":
+			fg.Compositions = append(fg.Compositions, t)
+		case "pa_features":
+			fg.Features = append(fg.Features, t)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Collections = leaf categories (those with no children).
+	if err := scanFacet(ctx, db, &fg.Collections, `
+		SELECT t.name, COUNT(DISTINCT p.id) AS cnt
+		FROM products p
+		JOIN product_taxonomy pt ON pt.product_id = p.id
+		JOIN taxonomies t        ON t.id = pt.taxonomy_id AND t.type = 'category'
+		WHERE `+whereCol+`
+		  AND NOT EXISTS (SELECT 1 FROM taxonomies c WHERE c.parent_id = t.id)
+		GROUP BY t.name
+		ORDER BY t.name`, argsCol); err != nil {
+		return nil, err
+	}
+
+	// Categories = the parent categories of those leaves.
+	if err := scanFacet(ctx, db, &fg.Categories, `
+		SELECT parent.name, COUNT(DISTINCT p.id) AS cnt
+		FROM products p
+		JOIN product_taxonomy pt ON pt.product_id = p.id
+		JOIN taxonomies leaf     ON leaf.id = pt.taxonomy_id AND leaf.type = 'category'
+		JOIN taxonomies parent   ON parent.id = leaf.parent_id
+		WHERE `+whereCat+`
+		GROUP BY parent.name
+		ORDER BY parent.name`, argsCat); err != nil {
+		return nil, err
+	}
+
+	return fg, nil
+}
+
+// scanFacet runs a "name, count" facet query and appends non-N/A rows to dst.
+func scanFacet(ctx context.Context, db *sql.DB, dst *[]Taxonomy, query string, args []any) error {
+	rows, err := db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var t Taxonomy
+		if err := rows.Scan(&t.Name, &t.Count); err != nil {
+			return err
+		}
+		if isNA(t.Name) {
+			continue
+		}
+		*dst = append(*dst, t)
+	}
+	return rows.Err()
 }
 
 // QueryProducts runs the filtered, sorted, paginated catalog query plus a
@@ -190,6 +322,9 @@ func QueryProducts(ctx context.Context, db *sql.DB, f ProductFilter) (*ProductPa
 	if err := attachCollections(ctx, db, products, ids, index); err != nil {
 		return nil, err
 	}
+	if err := attachCategories(ctx, db, products, ids, index); err != nil {
+		return nil, err
+	}
 
 	totalPages := (total + pageSize - 1) / pageSize
 	return &ProductPage{
@@ -215,7 +350,7 @@ func attachCollections(ctx context.Context, db *sql.DB, products []Product, ids 
 		FROM product_taxonomy pt
 		JOIN taxonomies t ON t.id = pt.taxonomy_id
 		WHERE t.type = 'collection' AND pt.product_id IN (`+ph+`)
-		ORDER BY t.name`, ids...)
+		ORDER BY t.id`, ids...)
 	if err != nil {
 		return err
 	}
@@ -229,6 +364,37 @@ func attachCollections(ctx context.Context, db *sql.DB, products []Product, ids 
 		}
 		if i, ok := index[pid]; ok {
 			products[i].Collections = append(products[i].Collections, t)
+		}
+	}
+	return rows.Err()
+}
+
+// attachCategories hydrates each card's categories, ordered top-level-first so
+// the deepest (leaf) category is last — that's what the card chip displays.
+func attachCategories(ctx context.Context, db *sql.DB, products []Product, ids []any, index map[uint64]int) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	ph := strings.TrimSuffix(strings.Repeat("?,", len(ids)), ",")
+	rows, err := db.QueryContext(ctx, `
+		SELECT pt.product_id, t.id, t.name, t.slug, t.type
+		FROM product_taxonomy pt
+		JOIN taxonomies t ON t.id = pt.taxonomy_id
+		WHERE t.type = 'category' AND pt.product_id IN (`+ph+`)
+		ORDER BY (t.parent_id IS NULL) DESC, t.id`, ids...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var pid uint64
+		var t Taxonomy
+		if err := rows.Scan(&pid, &t.ID, &t.Name, &t.Slug, &t.Type); err != nil {
+			return err
+		}
+		if i, ok := index[pid]; ok {
+			products[i].Categories = append(products[i].Categories, t)
 		}
 	}
 	return rows.Err()

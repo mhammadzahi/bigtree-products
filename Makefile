@@ -19,6 +19,10 @@ import-test:
 import:
 	go run fill_prodcut.go full
 
+## add my user
+add-user:
+	go run add_user.go web@bigtree-group.com 'w3b@BT'
+
 ## run: start the server
 run:
 	go run ./cmd/server

@@ -16,6 +16,15 @@
 
   let currentPage = 1;
 
+  /* ---- exclusive accordions: opening one collapses the others ------------- */
+  const accordions = form.querySelectorAll("details.accordion");
+  accordions.forEach((d) => {
+    d.addEventListener("toggle", () => {
+      if (!d.open) return;
+      accordions.forEach((other) => { if (other !== d) other.open = false; });
+    });
+  });
+
   /* ---- build the query string from the current form + sort state --------- */
   function buildParams() {
     const params = new URLSearchParams();
@@ -30,7 +39,7 @@
     if (collection) params.set("collection", collection);
 
     // repeatable checkbox facets
-    ["brand", "pa_color", "pa_composition", "pa_application", "pa_types", "pa_features"].forEach((key) => {
+    ["brand", "pa_application", "pa_color", "pa_composition", "pa_features"].forEach((key) => {
       data.getAll(key).forEach((v) => v && params.append(key, v));
     });
 
@@ -59,8 +68,10 @@
       ? `<span class="stock-pill in">In stock</span>`
       : `<span class="stock-pill out">Out of stock</span>`;
     const sku = p.sku ? `<span class="sku">SKU ${esc(p.sku)}</span>` : "";
-    const tags = (p.collections || []).length
-      ? `<div class="tags">${p.collections.map((t) => `<span class="tag">${esc(t.name)}</span>`).join("")}</div>`
+    const cats = p.categories || [];
+    const leafCat = cats.length ? cats[cats.length - 1] : null;
+    const tags = leafCat
+      ? `<div class="tags"><span class="tag">${esc(leafCat.name)}</span></div>`
       : "";
 
     return `<article class="card">
@@ -75,6 +86,43 @@
         </div>
       </div>
     </article>`;
+  }
+
+  /* ---- dynamically re-render the sidebar facets -------------------------- */
+  // Each facet's options come from the server, computed over the CURRENT result
+  // set, so anything shown always yields products (no dead-ends), counts stay
+  // live, and empty facets collapse. Order matches the sidebar markup.
+  const FACET_DEFS = [
+    { param: "brand",          key: "brands",         multi: true },
+    { param: "collection",     key: "collections",    multi: false, all: "All collections" },
+    { param: "category",       key: "categories",     multi: false, all: "All categories" },
+    { param: "pa_application", key: "pa_application", multi: true },
+    { param: "pa_color",       key: "pa_color",       multi: true },
+    { param: "pa_composition", key: "pa_composition", multi: true },
+    { param: "pa_features",    key: "pa_features",    multi: true },
+  ];
+
+  function renderFacets(facets, params) {
+    FACET_DEFS.forEach((def) => {
+      const ul = document.getElementById("facet-" + def.param);
+      if (!ul) return;
+      const terms = facets[def.key] || [];
+      const details = ul.closest("details.accordion");
+      if (details) details.hidden = terms.length === 0;
+
+      const selected = new Set(params.getAll(def.param));
+      let html = "";
+      if (!def.multi) {
+        const checked = selected.size === 0 ? " checked" : "";
+        html += `<li><label class="facet"><input type="radio" name="${def.param}" value=""${checked}> <span>${esc(def.all)}</span></label></li>`;
+      }
+      terms.forEach((t) => {
+        const type = def.multi ? "checkbox" : "radio";
+        const on = selected.has(t.name) ? " checked" : "";
+        html += `<li><label class="facet"><input type="${type}" name="${def.param}" value="${esc(t.name)}"${on}> <span>${esc(t.name)}</span><em class="count">${t.count}</em></label></li>`;
+      });
+      ul.innerHTML = html;
+    });
   }
 
   /* ---- render the pagination control ------------------------------------- */
@@ -109,6 +157,7 @@
 
       if (count) count.innerHTML = `<strong>${data.total}</strong> products`;
       renderPager(data);
+      if (data.facets) renderFacets(data.facets, params);
 
       if (pushHistory !== false) {
         const qs = params.toString();

@@ -5,8 +5,9 @@
 // (ACF) key and attribute seen. Use this to inspect the real data shape before
 // tailoring the schema.
 //
-//	go run dump_sample.go          # 30 products (default)
-//	go run dump_sample.go 50       # 50 products
+//	go run dump_sample.go              # 30 products (default)
+//	go run dump_sample.go 50           # 50 products
+//	go run dump_sample.go product 1234 # a single product by WooCommerce ID
 //
 // Reads WC_STORE_URL / WC_CONSUMER_KEY / WC_CONSUMER_SECRET from .env.
 package main
@@ -35,17 +36,44 @@ func main() {
 		log.Fatal("missing WC_STORE_URL / WC_CONSUMER_KEY / WC_CONSUMER_SECRET in .env")
 	}
 
+	// Determine the mode from the args.
+	//   (none)          -> list, 30 products
+	//   <number>        -> list, that many products
+	//   product <id>    -> single product by WooCommerce ID
+	single := false
+	productID := ""
 	n := 30
-	if len(os.Args) > 1 {
-		if v, err := strconv.Atoi(os.Args[1]); err == nil && v > 0 {
-			n = v
+	args := os.Args[1:]
+	if len(args) > 0 {
+		switch strings.ToLower(args[0]) {
+		case "product", "single", "single_product", "id":
+			if len(args) < 2 {
+				log.Fatal("usage: go run dump_sample.go product <id>")
+			}
+			if _, err := strconv.Atoi(args[1]); err != nil {
+				log.Fatalf("invalid product id %q — must be numeric", args[1])
+			}
+			single, productID = true, args[1]
+		default:
+			if v, err := strconv.Atoi(args[0]); err == nil && v > 0 {
+				n = v
+			}
 		}
 	}
-	if n > 100 {
-		n = 100 // one page max for a sample
+
+	// Build the request URL + output filename per mode.
+	var url, outfile string
+	if single {
+		url = fmt.Sprintf("%s/wp-json/wc/v3/products/%s", store, productID)
+		outfile = fmt.Sprintf("single_product_%s.json", productID)
+	} else {
+		if n > 100 {
+			n = 100 // one page max for a sample
+		}
+		url = fmt.Sprintf("%s/wp-json/wc/v3/products?per_page=%d&page=1&status=publish", store, n)
+		outfile = "sample_products.json"
 	}
 
-	url := fmt.Sprintf("%s/wp-json/wc/v3/products?per_page=%d&page=1&status=publish", store, n)
 	req, _ := http.NewRequest(http.MethodGet, url, nil)
 	req.SetBasicAuth(key, secret)
 	req.Header.Set("Accept", "application/json")
@@ -59,15 +87,26 @@ func main() {
 		log.Fatalf("HTTP %d from WooCommerce", resp.StatusCode)
 	}
 
-	// Decode loosely so we can both save raw and summarise.
+	// Decode loosely so we can both save raw and summarise. The single-product
+	// endpoint returns one object; wrap it in a slice for uniform handling.
 	var products []map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&products); err != nil {
-		log.Fatalf("decode: %v", err)
+	var raw any
+	if single {
+		var one map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&one); err != nil {
+			log.Fatalf("decode: %v", err)
+		}
+		products, raw = []map[string]any{one}, one
+	} else {
+		if err := json.NewDecoder(resp.Body).Decode(&products); err != nil {
+			log.Fatalf("decode: %v", err)
+		}
+		raw = products
 	}
 
 	// Save pretty-printed raw JSON.
-	out, _ := json.MarshalIndent(products, "", "  ")
-	if err := os.WriteFile("sample_products.json", out, 0o644); err != nil {
+	out, _ := json.MarshalIndent(raw, "", "  ")
+	if err := os.WriteFile(outfile, out, 0o644); err != nil {
 		log.Fatalf("write file: %v", err)
 	}
 
@@ -99,14 +138,14 @@ func main() {
 		}
 	}
 
-	fmt.Printf("\nSaved %d products -> sample_products.json\n", len(products))
+	fmt.Printf("\nSaved %d product(s) -> %s\n", len(products), outfile)
 	fmt.Println("\n=== Top-level product fields ===")
 	printSorted(topKeys)
 	fmt.Println("\n=== Attributes (name (slug)) ===")
 	printSorted(attrs)
 	fmt.Println("\n=== Custom-field / ACF meta_data keys ===")
 	printSorted(metaKeys)
-	fmt.Println("\nShare sample_products.json (or the lists above) to tailor the schema.")
+	fmt.Printf("\nInspect %s (or the lists above) to see the full shape.\n", outfile)
 }
 
 func printSorted(m map[string]int) {

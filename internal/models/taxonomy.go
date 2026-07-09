@@ -1,10 +1,6 @@
 package models
 
-import (
-	"context"
-	"database/sql"
-	"strings"
-)
+import "strings"
 
 // isNA reports whether a term is an "N/A" placeholder that shouldn't be a filter.
 func isNA(s string) bool {
@@ -24,58 +20,15 @@ type Taxonomy struct {
 	Count uint   `json:"count"`
 }
 
-// FilterGroups is the sidebar payload: every taxonomy type mapped to its terms,
-// ordered so the template/JS can render accordion modules directly.
+// FilterGroups is the sidebar payload: each facet's available options, in the
+// display order used by the template/JS. Populated by LoadFacets (product.go)
+// over the current filtered result set. Values are matched by Name.
 type FilterGroups struct {
-	Categories   []Taxonomy `json:"categories"`
-	Collections  []Taxonomy `json:"collections"`  // WooCommerce product tags
 	Brands       []Taxonomy `json:"brands"`
+	Collections  []Taxonomy `json:"collections"`  // leaf categories (series)
+	Categories   []Taxonomy `json:"categories"`   // parent categories
+	Applications []Taxonomy `json:"pa_application"`
 	Colors       []Taxonomy `json:"pa_color"`
 	Compositions []Taxonomy `json:"pa_composition"`
-	Applications []Taxonomy `json:"pa_application"`
-	Types        []Taxonomy `json:"pa_types"`
 	Features     []Taxonomy `json:"pa_features"`
-}
-
-// LoadFilterGroups fetches every non-empty taxonomy term in one pass and buckets
-// it by type for the sidebar.
-func LoadFilterGroups(ctx context.Context, db *sql.DB) (*FilterGroups, error) {
-	rows, err := db.QueryContext(ctx, `
-		SELECT id, name, slug, type, count
-		FROM taxonomies
-		ORDER BY type, name`)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	fg := &FilterGroups{}
-	for rows.Next() {
-		var t Taxonomy
-		if err := rows.Scan(&t.ID, &t.Name, &t.Slug, &t.Type, &t.Count); err != nil {
-			return nil, err
-		}
-		if isNA(t.Name) || isNA(t.Slug) {
-			continue // hide "N/A" placeholder terms from the filters
-		}
-		switch t.Type {
-		case "category":
-			fg.Categories = append(fg.Categories, t)
-		case "collection":
-			fg.Collections = append(fg.Collections, t)
-		case "brand":
-			fg.Brands = append(fg.Brands, t)
-		case "pa_color":
-			fg.Colors = append(fg.Colors, t)
-		case "pa_composition":
-			fg.Compositions = append(fg.Compositions, t)
-		case "pa_application":
-			fg.Applications = append(fg.Applications, t)
-		case "pa_types":
-			fg.Types = append(fg.Types, t)
-		case "pa_features":
-			fg.Features = append(fg.Features, t)
-		}
-	}
-	return fg, rows.Err()
 }

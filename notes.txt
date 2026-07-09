@@ -1,6 +1,12 @@
 make db                                       # (re)build schema
-go run add_user.go web@bigtree-group.com 'w3b@BT'
-make import-test                              # 1000 products to validate
-make run                                      # log in as web@bigtree-group.com / w3b@BT
+make import-test
+make add-user
+make run
 # once happy:  make import                    # full catalog
+
+
+
+# get sample by id (json file)
+go run dump_sample.go product 93408
+
 

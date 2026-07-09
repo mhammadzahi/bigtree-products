@@ -24,16 +24,14 @@
                  value="{{ .Selected.Search }}" autocomplete="off">
         </div>
 
-        {{ if .Filters.Categories }}
-        <details class="accordion" open>
-          <summary>Categories</summary>
-          <ul class="facet-list">
-            <li><label class="facet"><input type="radio" name="category" value=""
-                {{ if eq .Selected.Category "" }}checked{{ end }}> <span>All categories</span></label></li>
-            {{ range .Filters.Categories }}
+        {{ if .Filters.Brands }}
+        <details class="accordion" data-facet="brand">
+          <summary>Brand</summary>
+          <ul class="facet-list" id="facet-brand">
+            {{ range .Filters.Brands }}
             <li><label class="facet">
-              <input type="radio" name="category" value="{{ .Slug }}"
-                     {{ if eq $.Selected.Category .Slug }}checked{{ end }}>
+              <input type="checkbox" name="brand" value="{{ .Name }}"
+                     {{ if contains $.Selected.Brands .Name }}checked{{ end }}>
               <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
             </label></li>
             {{ end }}
@@ -42,15 +40,15 @@
         {{ end }}
 
         {{ if .Filters.Collections }}
-        <details class="accordion" open>
+        <details class="accordion" data-facet="collection" open>
           <summary>Collections</summary>
-          <ul class="facet-list">
+          <ul class="facet-list" id="facet-collection">
             <li><label class="facet"><input type="radio" name="collection" value=""
                 {{ if eq .Selected.Collection "" }}checked{{ end }}> <span>All collections</span></label></li>
             {{ range .Filters.Collections }}
             <li><label class="facet">
-              <input type="radio" name="collection" value="{{ .Slug }}"
-                     {{ if eq $.Selected.Collection .Slug }}checked{{ end }}>
+              <input type="radio" name="collection" value="{{ .Name }}"
+                     {{ if eq $.Selected.Collection .Name }}checked{{ end }}>
               <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
             </label></li>
             {{ end }}
@@ -58,59 +56,16 @@
         </details>
         {{ end }}
 
-        {{ if .Filters.Brands }}
-        <details class="accordion">
-          <summary>Brand</summary>
-          <ul class="facet-list">
-            {{ range .Filters.Brands }}
+        {{ if .Filters.Categories }}
+        <details class="accordion" data-facet="category">
+          <summary>Categories</summary>
+          <ul class="facet-list" id="facet-category">
+            <li><label class="facet"><input type="radio" name="category" value=""
+                {{ if eq .Selected.Category "" }}checked{{ end }}> <span>All categories</span></label></li>
+            {{ range .Filters.Categories }}
             <li><label class="facet">
-              <input type="checkbox" name="brand" value="{{ .Slug }}"
-                     {{ if contains $.Selected.Brands .Slug }}checked{{ end }}>
-              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
-            </label></li>
-            {{ end }}
-          </ul>
-        </details>
-        {{ end }}
-
-        {{ if .Filters.Types }}
-        <details class="accordion">
-          <summary>Type</summary>
-          <ul class="facet-list">
-            {{ range .Filters.Types }}
-            <li><label class="facet">
-              <input type="checkbox" name="pa_types" value="{{ .Slug }}"
-                     {{ if contains $.Selected.Types .Slug }}checked{{ end }}>
-              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
-            </label></li>
-            {{ end }}
-          </ul>
-        </details>
-        {{ end }}
-
-        {{ if .Filters.Colors }}
-        <details class="accordion">
-          <summary>Colour</summary>
-          <ul class="facet-list">
-            {{ range .Filters.Colors }}
-            <li><label class="facet">
-              <input type="checkbox" name="pa_color" value="{{ .Slug }}"
-                     {{ if contains $.Selected.Colors .Slug }}checked{{ end }}>
-              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
-            </label></li>
-            {{ end }}
-          </ul>
-        </details>
-        {{ end }}
-
-        {{ if .Filters.Compositions }}
-        <details class="accordion">
-          <summary>Composition</summary>
-          <ul class="facet-list">
-            {{ range .Filters.Compositions }}
-            <li><label class="facet">
-              <input type="checkbox" name="pa_composition" value="{{ .Slug }}"
-                     {{ if contains $.Selected.Compositions .Slug }}checked{{ end }}>
+              <input type="radio" name="category" value="{{ .Name }}"
+                     {{ if eq $.Selected.Category .Name }}checked{{ end }}>
               <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
             </label></li>
             {{ end }}
@@ -119,13 +74,43 @@
         {{ end }}
 
         {{ if .Filters.Applications }}
-        <details class="accordion">
+        <details class="accordion" data-facet="pa_application">
           <summary>Application</summary>
-          <ul class="facet-list">
+          <ul class="facet-list" id="facet-pa_application">
             {{ range .Filters.Applications }}
             <li><label class="facet">
-              <input type="checkbox" name="pa_application" value="{{ .Slug }}"
-                     {{ if contains $.Selected.Applications .Slug }}checked{{ end }}>
+              <input type="checkbox" name="pa_application" value="{{ .Name }}"
+                     {{ if contains $.Selected.Applications .Name }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Colors }}
+        <details class="accordion" data-facet="pa_color">
+          <summary>Colour</summary>
+          <ul class="facet-list" id="facet-pa_color">
+            {{ range .Filters.Colors }}
+            <li><label class="facet">
+              <input type="checkbox" name="pa_color" value="{{ .Name }}"
+                     {{ if contains $.Selected.Colors .Name }}checked{{ end }}>
+              <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
+            </label></li>
+            {{ end }}
+          </ul>
+        </details>
+        {{ end }}
+
+        {{ if .Filters.Compositions }}
+        <details class="accordion" data-facet="pa_composition">
+          <summary>Composition</summary>
+          <ul class="facet-list" id="facet-pa_composition">
+            {{ range .Filters.Compositions }}
+            <li><label class="facet">
+              <input type="checkbox" name="pa_composition" value="{{ .Name }}"
+                     {{ if contains $.Selected.Compositions .Name }}checked{{ end }}>
               <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
             </label></li>
             {{ end }}
@@ -134,13 +119,13 @@
         {{ end }}
 
         {{ if .Filters.Features }}
-        <details class="accordion">
+        <details class="accordion" data-facet="pa_features">
           <summary>Features</summary>
-          <ul class="facet-list">
+          <ul class="facet-list" id="facet-pa_features">
             {{ range .Filters.Features }}
             <li><label class="facet">
-              <input type="checkbox" name="pa_features" value="{{ .Slug }}"
-                     {{ if contains $.Selected.Features .Slug }}checked{{ end }}>
+              <input type="checkbox" name="pa_features" value="{{ .Name }}"
+                     {{ if contains $.Selected.Features .Name }}checked{{ end }}>
               <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
             </label></li>
             {{ end }}
@@ -149,7 +134,6 @@
         {{ end }}
 
         <div class="filter-actions">
-          <button type="submit" class="btn btn-primary">Apply filters</button>
           <button type="button" id="clear-filters" class="btn btn-ghost">Clear all</button>
         </div>
       </form>
@@ -181,10 +165,8 @@
           <div class="card-body">
             {{ if .SKU }}<span class="sku">SKU {{ .SKU }}</span>{{ end }}
             <h3 class="card-title"><a href="/product/{{ .Slug }}">{{ .Title }}</a></h3>
-            {{ if .Collections }}
-            <div class="tags">
-              {{ range .Collections }}<span class="tag">{{ .Name }}</span>{{ end }}
-            </div>
+            {{ with .PrimaryCategory }}
+            <div class="tags"><span class="tag">{{ .Name }}</span></div>
             {{ end }}
             <div class="card-footer">
               <span class="stock-pill {{ if .InStock }}in{{ else }}out{{ end }}">
@@ -207,6 +189,6 @@
     </main>
   </div>
 
-  <script src="/static/js/app.js"></script>
+  <script src="/static/js/app.js?v=4"></script>
 </body>
 </html>

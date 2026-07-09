@@ -16,7 +16,8 @@ func (h *Handler) Catalog(c *gin.Context) {
 	user, _ := currentUser(c)
 	filter := parseFilter(c)
 
-	filters, err := models.LoadFilterGroups(c.Request.Context(), h.DB)
+	// Facets are computed over the current filter so options always yield results.
+	filters, err := models.LoadFacets(c.Request.Context(), h.DB, filter)
 	if err != nil {
 		c.String(http.StatusInternalServerError, "failed to load filters")
 		return
@@ -37,13 +38,17 @@ func (h *Handler) Catalog(c *gin.Context) {
 }
 
 // APIProducts is the async endpoint the sidebar/search hit via fetch(). It
-// returns the paginated result set as JSON for client-side grid re-rendering.
+// returns the paginated result set plus the recomputed facets so the client can
+// re-render both the grid and the filter options.
 func (h *Handler) APIProducts(c *gin.Context) {
 	filter := parseFilter(c)
 	page, err := models.QueryProducts(c.Request.Context(), h.DB, filter)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "query failed"})
 		return
+	}
+	if facets, err := models.LoadFacets(c.Request.Context(), h.DB, filter); err == nil {
+		page.Facets = facets
 	}
 	c.JSON(http.StatusOK, page)
 }
