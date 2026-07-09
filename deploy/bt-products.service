@@ -1,0 +1,27 @@
+# Reference systemd unit. `./deploy.sh setup` generates this automatically with
+# the correct User + WorkingDirectory; this copy is for manual installation.
+#
+# Install manually:
+#   sudo cp deploy/bt-products.service /etc/systemd/system/bt-products.service
+#   # edit User= and the two paths to match your box, then:
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bt-products
+#
+# The binary reads .env, templates/ and static/ relative to WorkingDirectory,
+# so WorkingDirectory MUST be the repo root (where .env lives).
+
+[Unit]
+Description=Bigtree Products staff catalog
+After=network.target
+
+[Service]
+Type=simple
+User=bigtree
+WorkingDirectory=/home/bigtree/bigtree-products
+ExecStart=/home/bigtree/bigtree-products/bin/server
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
