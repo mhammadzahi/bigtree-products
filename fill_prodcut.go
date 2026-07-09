@@ -33,11 +33,63 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"bigtree-products/internal/config"
 	"bigtree-products/internal/database"
 )
+
+// Concurrency for the write phase. The DB pool is sized to match (database.go).
+const (
+	productWorkers   = 12
+	variationWorkers = 8
+)
+
+// runWorkers fans `items` out across `workers` goroutines, stopping on the first
+// error. Order is irrelevant here — every item's DB writes are independent.
+func runWorkers[T any](items []T, workers int, fn func(T) error) error {
+	if workers < 1 {
+		workers = 1
+	}
+	ch := make(chan T)
+	stop := make(chan struct{})
+	var once sync.Once
+	var mu sync.Mutex
+	var firstErr error
+
+	var wg sync.WaitGroup
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for it := range ch {
+				if err := fn(it); err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+					once.Do(func() { close(stop) })
+					return
+				}
+			}
+		}()
+	}
+
+feed:
+	for _, it := range items {
+		select {
+		case ch <- it:
+		case <-stop:
+			break feed
+		}
+	}
+	close(ch)
+	wg.Wait()
+	return firstErr
+}
 
 // clean trims and decodes HTML entities so names/titles store as plain text
 // ("Nails &amp; Buttons" -> "Nails & Buttons"), rendered correctly by templates.
@@ -192,7 +244,7 @@ func main() {
 
 	imp := &importer{
 		db:          db,
-		client:      &http.Client{Timeout: 30 * time.Second},
+		client:      &http.Client{Timeout: 120 * time.Second},
 		base:        store + "/wp-json/wc/v3",
 		key:         key,
 		secret:      secret,
@@ -244,9 +296,15 @@ func (imp *importer) run() error {
 		return fmt.Errorf("load taxonomy ids: %w", err)
 	}
 
-	// 2) upsert products + rebuild their taxonomy links.
-	var variableIDs []wooProduct
-	for _, p := range products {
+	// 2) upsert products + rebuild their taxonomy links, in parallel. Each
+	//    product's writes are batched (one multi-row insert per table) and
+	//    independent of the others, so a worker pool scales cleanly.
+	var (
+		mu          sync.Mutex
+		variableIDs []wooProduct
+		done        int64
+	)
+	if err := runWorkers(products, productWorkers, func(p wooProduct) error {
 		if err := imp.upsertProduct(ctx, p); err != nil {
 			return fmt.Errorf("product %d: %w", p.ID, err)
 		}
@@ -257,15 +315,28 @@ func (imp *importer) run() error {
 			return fmt.Errorf("meta product %d: %w", p.ID, err)
 		}
 		if p.Type == "variable" {
+			mu.Lock()
 			variableIDs = append(variableIDs, p)
+			mu.Unlock()
 		}
+		if n := atomic.AddInt64(&done, 1); n%1000 == 0 {
+			log.Printf("  wrote %d/%d products", n, len(products))
+		}
+		return nil
+	}); err != nil {
+		return err
 	}
+	log.Printf("wrote %d products", len(products))
 
-	// 3) pull variations for variable parents (best-effort per parent).
-	for _, parent := range variableIDs {
-		if err := imp.importVariations(ctx, parent); err != nil {
-			log.Printf("warning: variations for %d (%s): %v", parent.ID, parent.Slug, err)
-		}
+	// 3) pull variations for variable parents in parallel (best-effort per parent).
+	if len(variableIDs) > 0 {
+		log.Printf("importing variations for %d variable products", len(variableIDs))
+		_ = runWorkers(variableIDs, variationWorkers, func(parent wooProduct) error {
+			if err := imp.importVariations(ctx, parent); err != nil {
+				log.Printf("warning: variations for %d (%s): %v", parent.ID, parent.Slug, err)
+			}
+			return nil // don't abort the whole import over one parent's variations
+		})
 	}
 
 	// 4) refresh cached taxonomy counts.
@@ -332,14 +403,28 @@ func (imp *importer) collectTaxonomies(p wooProduct) []string {
 	return keys
 }
 
-// upsertTaxonomies writes every collected term. ON DUPLICATE keeps any existing
-// row's id (matched by the UNIQUE(type,slug)) and just refreshes the name.
+// upsertTaxonomies writes every collected term in chunked multi-row inserts.
+// ON DUPLICATE keeps any existing row's id (matched by UNIQUE(type,slug)).
 func (imp *importer) upsertTaxonomies(ctx context.Context) error {
-	const q = `INSERT INTO taxonomies (id, name, slug, type)
-	           VALUES (?, ?, ?, ?)
-	           ON DUPLICATE KEY UPDATE name = VALUES(name)`
+	const chunk = 400
+	terms := make([]*taxo, 0, len(imp.taxByKey))
 	for _, t := range imp.taxByKey {
-		if _, err := imp.db.ExecContext(ctx, q, t.id, t.name, t.slug, t.typ); err != nil {
+		terms = append(terms, t)
+	}
+	for i := 0; i < len(terms); i += chunk {
+		end := i + chunk
+		if end > len(terms) {
+			end = len(terms)
+		}
+		var vals []string
+		var args []any
+		for _, t := range terms[i:end] {
+			vals = append(vals, "(?, ?, ?, ?)")
+			args = append(args, t.id, t.name, t.slug, t.typ)
+		}
+		q := `INSERT INTO taxonomies (id, name, slug, type) VALUES ` +
+			strings.Join(vals, ",") + ` ON DUPLICATE KEY UPDATE name = VALUES(name)`
+		if _, err := imp.db.ExecContext(ctx, q, args...); err != nil {
 			return err
 		}
 	}
@@ -415,26 +500,30 @@ func (imp *importer) upsertProduct(ctx context.Context, p wooProduct) error {
 	return err
 }
 
-// linkTaxonomies rebuilds a product's junction rows from scratch (idempotent).
+// linkTaxonomies rebuilds a product's junction rows in a single batched insert.
 func (imp *importer) linkTaxonomies(ctx context.Context, productID int64, keys []string, authID map[string]int64) error {
 	if _, err := imp.db.ExecContext(ctx,
 		`DELETE FROM product_taxonomy WHERE product_id = ?`, productID); err != nil {
 		return err
 	}
 	seen := map[int64]bool{}
+	var vals []string
+	var args []any
 	for _, k := range keys {
 		id, ok := authID[k]
 		if !ok || seen[id] {
 			continue
 		}
 		seen[id] = true
-		if _, err := imp.db.ExecContext(ctx,
-			`INSERT IGNORE INTO product_taxonomy (product_id, taxonomy_id) VALUES (?, ?)`,
-			productID, id); err != nil {
-			return err
-		}
+		vals = append(vals, "(?, ?)")
+		args = append(args, productID, id)
 	}
-	return nil
+	if len(vals) == 0 {
+		return nil
+	}
+	q := `INSERT IGNORE INTO product_taxonomy (product_id, taxonomy_id) VALUES ` + strings.Join(vals, ",")
+	_, err := imp.db.ExecContext(ctx, q, args...)
+	return err
 }
 
 // importVariations pulls a variable product's variations and stores them as
@@ -549,6 +638,8 @@ func (imp *importer) importMeta(ctx context.Context, productID int64, metas []wo
 		`DELETE FROM product_meta WHERE product_id = ?`, productID); err != nil {
 		return err
 	}
+	var vals []string
+	var args []any
 	for _, m := range metas {
 		if m.Key == "" || strings.HasPrefix(m.Key, "_") || metaDenylist[m.Key] {
 			continue
@@ -557,13 +648,15 @@ func (imp *importer) importMeta(ctx context.Context, productID int64, metas []wo
 		if val == "" {
 			continue
 		}
-		if _, err := imp.db.ExecContext(ctx,
-			`INSERT INTO product_meta (product_id, meta_key, meta_value) VALUES (?, ?, ?)`,
-			productID, m.Key, val); err != nil {
-			return err
-		}
+		vals = append(vals, "(?, ?, ?)")
+		args = append(args, productID, m.Key, val)
 	}
-	return nil
+	if len(vals) == 0 {
+		return nil
+	}
+	q := `INSERT INTO product_meta (product_id, meta_key, meta_value) VALUES ` + strings.Join(vals, ",")
+	_, err := imp.db.ExecContext(ctx, q, args...)
+	return err
 }
 
 // metaValueString flattens an ACF value (string, number, array or object) to a
@@ -612,31 +705,59 @@ func (imp *importer) fetchAllProducts(ctx context.Context) ([]wooProduct, error)
 	}
 }
 
-// getJSON performs an authenticated GET and decodes into dst. It returns
-// hasMore=true when the WooCommerce X-WP-TotalPages header indicates more pages.
+// getJSON performs an authenticated GET and decodes into dst, retrying transient
+// failures (timeouts, network errors, 429/5xx) with exponential backoff. It
+// returns hasMore=true when the X-WP-TotalPages header indicates more pages.
 func (imp *importer) getJSON(ctx context.Context, path string, q url.Values, dst any) (bool, error) {
 	u := imp.base + path + "?" + q.Encode()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return false, err
-	}
-	req.SetBasicAuth(imp.key, imp.secret)
-	req.Header.Set("Accept", "application/json")
+	const maxAttempts = 4
+	var lastErr error
 
-	resp, err := imp.client.Do(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close()
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt > 1 {
+			// backoff: 3s, 6s, 12s ...
+			wait := time.Duration(3<<(attempt-2)) * time.Second
+			log.Printf("  retry %s (attempt %d) after %s: %v", path, attempt, wait, lastErr)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return false, ctx.Err()
+			}
+		}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return false, fmt.Errorf("GET %s: HTTP %d", path, resp.StatusCode)
-	}
-	if err := json.NewDecoder(resp.Body).Decode(dst); err != nil {
-		return false, err
-	}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+		if err != nil {
+			return false, err
+		}
+		req.SetBasicAuth(imp.key, imp.secret)
+		req.Header.Set("Accept", "application/json")
 
-	curPage, _ := strconv.Atoi(q.Get("page"))
-	totalPages, _ := strconv.Atoi(resp.Header.Get("X-WP-TotalPages"))
-	return totalPages > curPage, nil
+		resp, err := imp.client.Do(req)
+		if err != nil {
+			lastErr = err // network error / timeout — retry
+			continue
+		}
+		// Retry on rate-limit / server errors; give up on other 4xx.
+		if resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500 {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d", resp.StatusCode)
+			continue
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			resp.Body.Close()
+			return false, fmt.Errorf("GET %s: HTTP %d", path, resp.StatusCode)
+		}
+
+		err = json.NewDecoder(resp.Body).Decode(dst)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		curPage, _ := strconv.Atoi(q.Get("page"))
+		totalPages, _ := strconv.Atoi(resp.Header.Get("X-WP-TotalPages"))
+		return totalPages > curPage, nil
+	}
+	return false, fmt.Errorf("GET %s failed after %d attempts: %w", path, maxAttempts, lastErr)
 }
