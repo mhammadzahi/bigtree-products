@@ -511,6 +511,7 @@ func (imp *importer) importCategoryTree(ctx context.Context) error {
 	}
 
 	// pass 1: upsert every category with a NULL parent
+	exists := make(map[int64]bool, len(all))
 	for _, c := range all {
 		if _, err := imp.db.ExecContext(ctx, `
 			INSERT INTO taxonomies (id, name, slug, type, parent_id)
@@ -519,10 +520,12 @@ func (imp *importer) importCategoryTree(ctx context.Context) error {
 			c.ID, clean(c.Name), c.Slug); err != nil {
 			return err
 		}
+		exists[c.ID] = true
 	}
-	// pass 2: set parent links now that all rows exist
+	// pass 2: set parent links, but only when the parent was actually returned
+	// (skip orphan parents that would break the self-referencing foreign key).
 	for _, c := range all {
-		if c.Parent == 0 {
+		if c.Parent == 0 || !exists[c.Parent] {
 			continue
 		}
 		if _, err := imp.db.ExecContext(ctx,
