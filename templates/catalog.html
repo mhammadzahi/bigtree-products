@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} · Bigtree</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=2">
+  <link rel="stylesheet" href="/static/css/style.css?v=6">
 </head>
 <body>
   <header class="site-header">
@@ -60,12 +60,10 @@
         <details class="accordion" data-facet="category">
           <summary>Categories</summary>
           <ul class="facet-list" id="facet-category">
-            <li><label class="facet"><input type="radio" name="category" value=""
-                {{ if eq .Selected.Category "" }}checked{{ end }}> <span>All categories</span></label></li>
             {{ range .Filters.Categories }}
             <li><label class="facet">
-              <input type="radio" name="category" value="{{ .Name }}"
-                     {{ if eq $.Selected.Category .Name }}checked{{ end }}>
+              <input type="checkbox" name="category" value="{{ .Name }}"
+                     {{ if contains $.Selected.Categories .Name }}checked{{ end }}>
               <span>{{ .Name }}</span><em class="count">{{ .Count }}</em>
             </label></li>
             {{ end }}
@@ -154,7 +152,8 @@
         </label>
       </div>
 
-      <div id="product-grid" class="product-grid" aria-live="polite">
+      <div id="product-grid" class="product-grid" aria-live="polite"
+           data-has-next="{{ .Result.HasNext }}">
         {{ range .Result.Products }}
         <article class="card">
           <a class="card-media" href="/product/{{ .Slug }}">
@@ -181,14 +180,11 @@
         {{ end }}
       </div>
 
-      <nav class="pagination" id="pagination" aria-label="Pagination">
-        {{ if .Result.HasPrev }}<a class="page-link" data-page="{{ sub .Result.Page 1 }}" href="#">← Prev</a>{{ end }}
-        <span class="page-status">Page {{ .Result.Page }} of {{ if gt .Result.TotalPages 0 }}{{ .Result.TotalPages }}{{ else }}1{{ end }}</span>
-        {{ if .Result.HasNext }}<a class="page-link" data-page="{{ add .Result.Page 1 }}" href="#">Next →</a>{{ end }}
-      </nav>
+      <div id="scroll-loader" class="scroll-loader" hidden><span class="spinner"></span></div>
+      <div id="scroll-sentinel" class="scroll-sentinel" aria-hidden="true"></div>
     </main>
   </div>
 
-  <script src="/static/js/app.js?v=4"></script>
+  <script src="/static/js/app.js?v=6"></script>
 </body>
 </html>

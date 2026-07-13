@@ -10,7 +10,7 @@
   const grid     = document.getElementById("product-grid");
   const orderby  = document.getElementById("orderby");
   const count    = document.getElementById("result-count");
-  const pager    = document.getElementById("pagination");
+  const loader   = document.getElementById("scroll-loader");
   const clearBtn = document.getElementById("clear-filters");
   if (!form || !grid) return;
 
@@ -33,13 +33,11 @@
     // single-value fields
     const s = (data.get("s") || "").trim();
     if (s) params.set("s", s);
-    const category = data.get("category");
-    if (category) params.set("category", category);
     const collection = data.get("collection");
     if (collection) params.set("collection", collection);
 
     // repeatable checkbox facets
-    ["brand", "pa_application", "pa_color", "pa_composition", "pa_features"].forEach((key) => {
+    ["category", "brand", "pa_application", "pa_color", "pa_composition", "pa_features"].forEach((key) => {
       data.getAll(key).forEach((v) => v && params.append(key, v));
     });
 
@@ -95,7 +93,7 @@
   const FACET_DEFS = [
     { param: "brand",          key: "brands",         multi: true },
     { param: "collection",     key: "collections",    multi: false, all: "All collections" },
-    { param: "category",       key: "categories",     multi: false, all: "All categories" },
+    { param: "category",       key: "categories",     multi: true },
     { param: "pa_application", key: "pa_application", multi: true },
     { param: "pa_color",       key: "pa_color",       multi: true },
     { param: "pa_composition", key: "pa_composition", multi: true },
@@ -125,21 +123,16 @@
     });
   }
 
-  /* ---- render the pagination control ------------------------------------- */
-  function renderPager(res) {
-    if (!pager) return;
-    const total = res.total_pages > 0 ? res.total_pages : 1;
-    let html = "";
-    if (res.has_prev) html += `<a class="page-link" data-page="${res.page - 1}" href="#">← Prev</a>`;
-    html += `<span class="page-status">Page ${res.page} of ${total}</span>`;
-    if (res.has_next) html += `<a class="page-link" data-page="${res.page + 1}" href="#">Next →</a>`;
-    pager.innerHTML = html;
-  }
+  /* ---- fetch + render (fresh replace, or append for infinite scroll) ------ */
+  let hasNext = grid.dataset.hasNext === "true";
+  let loading = false;
 
-  /* ---- fetch + re-render -------------------------------------------------- */
-  async function load(pushHistory) {
-    const params = buildParams();
-    grid.classList.add("loading");
+  async function load(append) {
+    if (loading) return;
+    loading = true;
+    const params = buildParams(); // includes ?page= when currentPage > 1
+    if (append) { if (loader) loader.hidden = false; }
+    else grid.classList.add("loading");
     try {
       const res = await fetch("/api/v1/products?" + params.toString(), {
         headers: { "Accept": "application/json" },
@@ -150,41 +143,65 @@
 
       const data = await res.json();
       const products = data.products || [];
+      const cards = products.map(cardHTML).join("");
 
-      grid.innerHTML = products.length
-        ? products.map(cardHTML).join("")
-        : `<p class="empty">No products match these filters.</p>`;
-
-      if (count) count.innerHTML = `<strong>${data.total}</strong> products`;
-      renderPager(data);
-      if (data.facets) renderFacets(data.facets, params);
-
-      if (pushHistory !== false) {
+      if (append) {
+        grid.insertAdjacentHTML("beforeend", cards);
+      } else {
+        grid.innerHTML = products.length ? cards : `<p class="empty">No products match these filters.</p>`;
+        if (data.facets) renderFacets(data.facets, params);
         const qs = params.toString();
         window.history.replaceState(null, "", qs ? "/products?" + qs : "/products");
       }
+      hasNext = !!data.has_next;
+      if (count) count.innerHTML = `<strong>${data.total}</strong> products`;
     } catch (err) {
-      grid.innerHTML = `<p class="empty">Something went wrong loading products.</p>`;
+      if (!append) grid.innerHTML = `<p class="empty">Something went wrong loading products.</p>`;
       console.error(err);
     } finally {
+      loading = false;
       grid.classList.remove("loading");
+      if (loader) loader.hidden = true;
+      maybeFillViewport();
     }
   }
 
-  /* ---- events ------------------------------------------------------------ */
-  // Apply button / Enter key
-  form.addEventListener("submit", (e) => {
-    e.preventDefault();
+  // Reset to page 1 and replace the grid (filters/search/sort changed).
+  function resetLoad() {
     currentPage = 1;
-    load();
-  });
+    load(false);
+  }
 
-  // Auto-apply when a radio/checkbox changes.
+  // Load the next page and append (infinite scroll).
+  function loadMore() {
+    if (loading || !hasNext) return;
+    currentPage += 1;
+    load(true);
+  }
+
+  /* ---- infinite scroll --------------------------------------------------- */
+  const sentinel = document.getElementById("scroll-sentinel");
+  const io = sentinel
+    ? new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting) loadMore();
+      }, { rootMargin: "400px" })
+    : null;
+  if (io && sentinel) io.observe(sentinel);
+
+  // If the first page didn't fill the screen, keep loading until it does (or ends).
+  function maybeFillViewport() {
+    if (!sentinel || loading || !hasNext) return;
+    const r = sentinel.getBoundingClientRect();
+    if (r.top < window.innerHeight + 400) loadMore();
+  }
+
+  /* ---- events ------------------------------------------------------------ */
+  // Enter key in the form.
+  form.addEventListener("submit", (e) => { e.preventDefault(); resetLoad(); });
+
+  // Auto-apply when a checkbox/radio changes.
   form.addEventListener("change", (e) => {
-    if (e.target.matches('input[type="radio"], input[type="checkbox"]')) {
-      currentPage = 1;
-      load();
-    }
+    if (e.target.matches('input[type="radio"], input[type="checkbox"]')) resetLoad();
   });
 
   // Debounced live search on the text input.
@@ -192,27 +209,12 @@
   form.addEventListener("input", (e) => {
     if (e.target.name !== "s") return;
     clearTimeout(debounce);
-    debounce = setTimeout(() => { currentPage = 1; load(); }, 300);
+    debounce = setTimeout(resetLoad, 300);
   });
 
   // Sort dropdown.
-  if (orderby) orderby.addEventListener("change", () => { currentPage = 1; load(); });
+  if (orderby) orderby.addEventListener("change", resetLoad);
 
-  // Clear all.
-  if (clearBtn) clearBtn.addEventListener("click", () => {
-    form.reset();
-    // form.reset() restores default-checked radios ("All"); force page 1.
-    currentPage = 1;
-    load();
-  });
-
-  // Pagination (delegated — links are re-rendered on every load).
-  if (pager) pager.addEventListener("click", (e) => {
-    const link = e.target.closest(".page-link");
-    if (!link) return;
-    e.preventDefault();
-    currentPage = parseInt(link.dataset.page, 10) || 1;
-    load();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  });
+  // Clear all — reset the whole page to a clean state.
+  if (clearBtn) clearBtn.addEventListener("click", () => { window.location.href = "/"; });
 })();

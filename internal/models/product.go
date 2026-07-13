@@ -53,7 +53,7 @@ func (p Product) PrimaryCategory() *Taxonomy {
 	return &p.Categories[len(p.Categories)-1]
 }
 
-const pageSize = 12
+const pageSize = 30 // 3 columns × 10 rows
 
 // ProductFilter captures every query parameter the WooCommerce-style archive
 // accepts. Zero values mean "not filtered".
@@ -61,8 +61,8 @@ const pageSize = 12
 // to a single option and selecting it unions them.
 type ProductFilter struct {
 	Search       string   // ?s=
-	Collection   string   // ?collection= (leaf category name)
-	Category     string   // ?category=   (parent category name)
+	Collection   string   // ?collection= (leaf category name, single)
+	Categories   []string // ?category=   (parent category names, OR within)
 	Brands       []string // ?brand= (repeatable)
 	Applications []string // ?pa_application=
 	Colors       []string // ?pa_color=
@@ -131,14 +131,19 @@ func buildWhere(f ProductFilter) (string, []any) {
 	if f.Collection != "" {
 		addByName("category", f.Collection)
 	}
-	// Categories = the PARENT of the product's leaf category, matched by name.
-	if f.Category != "" {
+	// Categories = the PARENT of the product's leaf category. Multi-select, so a
+	// product matches ANY chosen category (OR within — a product has one parent,
+	// so AND would return nothing).
+	if cats := nonEmpty(f.Categories); len(cats) > 0 {
+		ph := strings.TrimSuffix(strings.Repeat("?,", len(cats)), ",")
 		clauses = append(clauses, `EXISTS (
 			SELECT 1 FROM product_taxonomy pt
 			JOIN taxonomies leaf   ON leaf.id = pt.taxonomy_id AND leaf.type = 'category'
 			JOIN taxonomies parent ON parent.id = leaf.parent_id
-			WHERE pt.product_id = p.id AND parent.name = ?)`)
-		args = append(args, f.Category)
+			WHERE pt.product_id = p.id AND parent.name IN (`+ph+`))`)
+		for _, c := range cats {
+			args = append(args, c)
+		}
 	}
 
 	addAllByName("brand", f.Brands)
@@ -167,7 +172,7 @@ func LoadFacets(ctx context.Context, db *sql.DB, f ProductFilter) (*FilterGroups
 	whereCol, argsCol := buildWhere(fCol)
 
 	fCat := f
-	fCat.Category = ""
+	fCat.Categories = nil
 	whereCat, argsCat := buildWhere(fCat)
 
 	fg := &FilterGroups{}

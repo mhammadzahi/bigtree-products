@@ -61,7 +61,7 @@ func parseFilter(c *gin.Context) models.ProductFilter {
 	return models.ProductFilter{
 		Search:       strings.TrimSpace(c.Query("s")),
 		Collection:   c.Query("collection"),
-		Category:     c.Query("category"),
+		Categories:   c.QueryArray("category"),
 		Brands:       c.QueryArray("brand"),
 		Applications: c.QueryArray("pa_application"),
 		Colors:       c.QueryArray("pa_color"),

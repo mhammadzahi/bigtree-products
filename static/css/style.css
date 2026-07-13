@@ -129,7 +129,17 @@ img { max-width: 100%; display: block; }
 .sort select { font: inherit; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
 
 /* ---------- Product grid -------------------------------------------------- */
-.product-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1.25rem; }
+/* 3 columns on desktop (30 per page = 10 rows). */
+.product-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.scroll-sentinel { height: 1px; }
+.scroll-loader { display: flex; justify-content: center; padding: 1.75rem 0; }
+.scroll-loader[hidden] { display: none; }
+.spinner {
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 3px solid var(--accent); border-top-color: var(--brand);
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .card {
   background: var(--surface); border: 1px solid var(--line);
   border-radius: var(--radius); overflow: hidden; display: flex; flex-direction: column;
@@ -229,4 +239,8 @@ img { max-width: 100%; display: block; }
   .layout { grid-template-columns: 1fr; }
   .sidebar { position: static; }
   .detail-grid { grid-template-columns: 1fr; }
+  .product-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 560px) {
+  .product-grid { grid-template-columns: 1fr; }
 }
