@@ -58,7 +58,10 @@ func (h *Handler) ProductDetail(c *gin.Context) {
 	user, _ := currentUser(c)
 	product, err := models.GetProductFull(c.Request.Context(), h.DB, c.Param("slug"))
 	if errors.Is(err, sql.ErrNoRows) {
-		c.HTML(http.StatusNotFound, "notfound.html", gin.H{"Title": "Not found", "User": user})
+		c.HTML(http.StatusNotFound, "notfound.html", gin.H{
+			"Title": "Not found", "User": user,
+			"Message": "That product could not be found.",
+		})
 		return
 	}
 	if err != nil {
@@ -68,4 +71,9 @@ func (h *Handler) ProductDetail(c *gin.Context) {
 	c.HTML(http.StatusOK, "product.html", gin.H{
 		"Title": product.Title, "User": user, "Product": product,
 	})
+}
+
+// NotFound renders the 404 page for any unmatched route.
+func (h *Handler) NotFound(c *gin.Context) {
+	c.HTML(http.StatusNotFound, "notfound.html", gin.H{"Title": "Page not found"})
 }

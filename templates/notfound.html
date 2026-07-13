@@ -4,16 +4,19 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} · Bigtree</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=2">
+  <link rel="stylesheet" href="/static/css/style.css?v=6">
 </head>
 <body>
   <header class="site-header">
     <a href="/products" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
   </header>
   <main class="detail center-block">
-    <h1>404</h1>
-    <p class="muted">That product could not be found.</p>
-    <a class="btn btn-primary" href="/products">Back to catalog</a>
+    <div class="notfound">
+      <div class="notfound-code">404</div>
+      <h1>Page not found</h1>
+      <p class="muted">{{ if .Message }}{{ .Message }}{{ else }}The page you’re looking for doesn’t exist or has moved.{{ end }}</p>
+      <a class="btn btn-primary btn-lg" href="/products">Back to catalog</a>
+    </div>
   </main>
 </body>
 </html>

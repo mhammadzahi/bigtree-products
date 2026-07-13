@@ -30,6 +30,9 @@ func main() {
 	r.LoadHTMLGlob("templates/*.html")
 	r.Static("/static", "./static")
 
+	// 404 for any unmatched route.
+	r.NoRoute(h.NotFound)
+
 	// --- public routes ------------------------------------------------------
 	r.GET("/", func(c *gin.Context) { c.Redirect(http.StatusSeeOther, "/products") })
 	r.GET("/login", h.ShowLogin)
