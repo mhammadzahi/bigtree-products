@@ -10,9 +10,13 @@ import (
 // Config holds runtime configuration sourced from environment variables so the
 // same binary runs unchanged across local / staging / production.
 type Config struct {
-	DSN        string // MariaDB data source name
-	ListenAddr string
+	DSN          string // MariaDB data source name
+	ListenAddr   string
 	SecureCookie bool // set true behind HTTPS so the session cookie gets `Secure`
+
+	GoogleCredentialsFile       string // path to the service account JSON key
+	GoogleTemplateSpreadsheetID string // master "Quotation" sheet to copy per quote
+	GoogleQuotesFolderID        string // Drive folder new quote copies are placed in
 }
 
 // Load reads configuration from the environment, applying sane local defaults.
@@ -22,6 +26,10 @@ func Load() Config {
 		DSN:          buildDSN(),
 		ListenAddr:   env("LISTEN_ADDR", ":8080"),
 		SecureCookie: env("SECURE_COOKIE", "false") == "true",
+
+		GoogleCredentialsFile:       env("GOOGLE_CREDENTIALS_FILE", "service-account.json"),
+		GoogleTemplateSpreadsheetID: env("GOOGLE_TEMPLATE_SPREADSHEET_ID", ""),
+		GoogleQuotesFolderID:        env("GOOGLE_QUOTES_FOLDER_ID", ""),
 	}
 }
 

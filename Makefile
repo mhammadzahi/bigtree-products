@@ -21,7 +21,7 @@ import:
 
 ## add my user
 add-user:
-	go run add_user.go web@bigtree-group.com 'w3b@BT'
+	go run add_user.go shafiq@bigtree-group.com 'w3b@BT'
 
 ## run: start the server
 run:

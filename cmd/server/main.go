@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"html/template"
 	"log"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"bigtree-products/internal/config"
 	"bigtree-products/internal/database"
 	"bigtree-products/internal/handlers"
+	"bigtree-products/internal/services"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +26,13 @@ func main() {
 	defer db.Close()
 
 	h := handlers.New(db, cfg)
+
+	quotationSvc, err := services.NewQuotationService(context.Background(),
+		cfg.GoogleCredentialsFile, cfg.GoogleTemplateSpreadsheetID, cfg.GoogleQuotesFolderID)
+	if err != nil {
+		log.Fatalf("quotation service: %v", err)
+	}
+	quotationHandler := handlers.NewQuotationHandler(db, quotationSvc)
 
 	r := gin.Default()
 	r.SetFuncMap(templateFuncs())
@@ -45,6 +54,7 @@ func main() {
 	{
 		auth.GET("/products", h.Catalog)
 		auth.GET("/product/:slug", h.ProductDetail)
+		auth.POST("/product/:slug/quote", quotationHandler.GenerateProductQuotation)
 	}
 
 	// --- authenticated JSON API --------------------------------------------

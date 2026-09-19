@@ -195,6 +195,22 @@ img { max-width: 100%; display: block; }
 .description { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.5rem; margin-top: 1.5rem; }
 .center-block { text-align: center; padding: 4rem 1rem; }
 
+/* ---------- Quotation modal ------------------------------------------------ */
+#quote-open-btn { align-self: flex-start; margin-top: .5rem; }
+.quote-modal {
+  width: 100%; max-width: 480px; border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: var(--shadow-lg); padding: 1.5rem; background: var(--surface);
+}
+.quote-modal::backdrop { background: rgba(16, 24, 40, .45); }
+.quote-modal h2 { margin: 0; }
+.quote-modal-sub { margin: -.5rem 0 0; }
+.quote-modal-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
+.quote-modal-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: .25rem; }
+@media (max-width: 560px) {
+  .quote-modal { max-width: 92vw; }
+  .quote-modal-row { grid-template-columns: 1fr; }
+}
+
 /* ---------- 404 ----------------------------------------------------------- */
 .notfound { display: grid; gap: .75rem; place-items: center; padding: 2rem 1rem; }
 .notfound-code {

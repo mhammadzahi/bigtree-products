@@ -32,8 +32,55 @@
           {{ if .Product.InStock }}In stock{{ else }}Out of stock{{ end }}
         </p>
         {{ if .Product.ShortDescription }}<div class="short-desc rich-text">{{ safeHTML .Product.ShortDescription }}</div>{{ end }}
+        <button type="button" id="quote-open-btn" class="btn btn-primary">📄 Generate PDF Quotation</button>
       </div>
     </div>
+
+    <!-- ===== Quotation modal ===== -->
+    <dialog id="quote-modal" class="quote-modal">
+      <form id="quote-form" method="post" action="/product/{{ .Product.Slug }}/quote" class="stack">
+        <h2>Generate quotation</h2>
+        <p class="muted quote-modal-sub">{{ .Product.Title }}{{ if .Product.SKU }} · SKU {{ .Product.SKU }}{{ end }}</p>
+
+        <label>Buyer company name
+          <input type="text" name="buyer_company" required>
+        </label>
+        <label>Contact person
+          <input type="text" name="buyer_contact" required>
+        </label>
+        <label>Project name
+          <input type="text" name="buyer_project">
+        </label>
+        <label>Phone / mobile
+          <input type="tel" name="buyer_phone">
+        </label>
+        <label>Email
+          <input type="email" name="buyer_email">
+        </label>
+
+        <div class="quote-modal-row">
+          <label>Quantity
+            <input type="number" name="quantity" value="1" min="1" step="1" required>
+          </label>
+          <label>Unit
+            <select name="unit">
+              <option value="PCS">PCS</option>
+              <option value="SQM">SQM</option>
+            </select>
+          </label>
+          <label>Unit price
+            <input type="number" name="unit_price" value="{{ if gt .Product.Price 0.0 }}{{ .Product.Price }}{{ end }}" min="0" step="0.01">
+          </label>
+        </div>
+
+        <p id="quote-error" class="alert" hidden></p>
+
+        <div class="quote-modal-actions">
+          <button type="button" id="quote-close-btn" class="btn btn-ghost">Cancel</button>
+          <button type="submit" id="quote-submit-btn" class="btn btn-primary">Generate PDF</button>
+        </div>
+      </form>
+    </dialog>
 
     <!-- ===== Core fields ===== -->
     <section class="info-panel">
@@ -110,5 +157,65 @@
     </section>
     {{ end }}
   </main>
+
+  <script>
+    (function () {
+      var modal = document.getElementById('quote-modal');
+      var openBtn = document.getElementById('quote-open-btn');
+      var closeBtn = document.getElementById('quote-close-btn');
+      var form = document.getElementById('quote-form');
+      var submitBtn = document.getElementById('quote-submit-btn');
+      var errorBox = document.getElementById('quote-error');
+
+      openBtn.addEventListener('click', function () {
+        errorBox.hidden = true;
+        modal.showModal();
+      });
+      closeBtn.addEventListener('click', function () {
+        modal.close();
+      });
+
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        errorBox.hidden = true;
+        submitBtn.disabled = true;
+        var originalLabel = submitBtn.textContent;
+        submitBtn.textContent = 'Generating…';
+
+        fetch(form.action, { method: 'POST', body: new FormData(form) })
+          .then(function (resp) {
+            if (!resp.ok) {
+              return resp.json().catch(function () { return {}; }).then(function (body) {
+                throw new Error(body.error || ('Request failed (' + resp.status + ')'));
+              });
+            }
+            var disposition = resp.headers.get('Content-Disposition') || '';
+            var match = disposition.match(/filename="([^"]+)"/);
+            var filename = match ? match[1] : 'Quotation.pdf';
+            return resp.blob().then(function (blob) { return { blob: blob, filename: filename }; });
+          })
+          .then(function (result) {
+            var url = URL.createObjectURL(result.blob);
+            var a = document.createElement('a');
+            a.href = url;
+            a.download = result.filename;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            modal.close();
+            form.reset();
+          })
+          .catch(function (err) {
+            errorBox.textContent = 'Could not generate quotation. ' + err.message;
+            errorBox.hidden = false;
+          })
+          .finally(function () {
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalLabel;
+          });
+      });
+    })();
+  </script>
 </body>
 </html>
