@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -75,6 +76,7 @@ func (h *QuotationHandler) GenerateProductQuotation(c *gin.Context) {
 		UnitPrice:    unitPrice,
 	})
 	if err != nil {
+		log.Printf("quotation: generate for slug=%q: %v", c.Param("slug"), err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate quotation"})
 		return
 	}

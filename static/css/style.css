@@ -197,18 +197,67 @@ img { max-width: 100%; display: block; }
 
 /* ---------- Quotation modal ------------------------------------------------ */
 #quote-open-btn { align-self: flex-start; margin-top: .5rem; }
+
 .quote-modal {
-  width: 100%; max-width: 480px; border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow-lg); padding: 1.5rem; background: var(--surface);
+  width: 100%; max-width: 560px; padding: 0; margin: auto;
+  border: none; border-radius: var(--radius); box-shadow: var(--shadow-lg);
+  background: var(--surface); color: var(--ink);
+  overflow: hidden;
 }
-.quote-modal::backdrop { background: rgba(16, 24, 40, .45); }
-.quote-modal h2 { margin: 0; }
-.quote-modal-sub { margin: -.5rem 0 0; }
-.quote-modal-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: .75rem; }
-.quote-modal-actions { display: flex; justify-content: flex-end; gap: .75rem; margin-top: .25rem; }
+.quote-modal::backdrop { background: rgba(16, 24, 40, .55); backdrop-filter: blur(1px); }
+.quote-modal[open] { animation: quote-modal-in .15s ease-out; }
+@keyframes quote-modal-in {
+  from { opacity: 0; transform: translateY(-8px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.quote-modal form { display: flex; flex-direction: column; min-width: 0; }
+
+.quote-modal-header {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem;
+  padding: 1.25rem 1.5rem; border-bottom: 1px solid var(--line); flex: none;
+}
+.quote-modal-header h2 { margin: 0; font-size: 1.15rem; }
+.quote-modal-sub { margin: .2rem 0 0; font-size: .85rem; }
+.quote-modal-close {
+  display: grid; place-items: center; width: 32px; height: 32px; flex: none;
+  border: none; border-radius: 8px; background: transparent; color: var(--ink-soft);
+  font-size: 1.4rem; line-height: 1; cursor: pointer; transition: background .15s, color .15s;
+}
+.quote-modal-close:hover { background: var(--bg); color: var(--ink); }
+
+.quote-modal-body { padding: 1.5rem; min-width: 0; }
+.quote-modal-body .alert { margin-top: 0; margin-bottom: 1rem; }
+
+.field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+.field-grid label {
+  display: grid; gap: .35rem; font-weight: 600; font-size: .85rem; color: var(--ink);
+  min-width: 0;
+}
+.field-grid label.span-2 { grid-column: 1 / -1; }
+.field-grid input, .field-grid select {
+  width: 100%; font: inherit; font-weight: 400; padding: .55rem .7rem;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+}
+.field-grid input:focus, .field-grid select:focus { outline: 2px solid var(--brand); outline-offset: 1px; }
+
+.quote-modal-footer {
+  display: flex; justify-content: flex-end; gap: .75rem;
+  padding: 1rem 1.5rem; border-top: 1px solid var(--line); flex: none; background: var(--surface);
+}
+
+.quote-spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, .4); border-top-color: #fff;
+  animation: quote-spin .6s linear infinite;
+}
+@keyframes quote-spin { to { transform: rotate(360deg); } }
+#quote-submit-btn:disabled { opacity: .8; cursor: default; }
+
 @media (max-width: 560px) {
   .quote-modal { max-width: 92vw; }
-  .quote-modal-row { grid-template-columns: 1fr; }
+  .field-grid { grid-template-columns: 1fr; }
+  .field-grid label.span-2 { grid-column: auto; }
 }
 
 /* ---------- 404 ----------------------------------------------------------- */
