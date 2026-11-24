@@ -511,8 +511,23 @@ func (imp *importer) loadExistingTaxonomies(ctx context.Context) error {
 	return rows.Err()
 }
 
+// maxTermLen is the size of taxonomies.name / taxonomies.slug (VARCHAR(191)).
+const maxTermLen = 191
+
+// truncRunes cuts s to at most n characters (not bytes), keeping UTF-8 valid.
+func truncRunes(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return strings.TrimSpace(string(r[:n]))
+}
+
 // getOrAddTax registers a taxonomy term (deduped by type|slug) and returns its key.
+// Over-long values (e.g. multi-line colour lists) are truncated to fit the columns.
 func (imp *importer) getOrAddTax(typ, slug, name string, realID int64) string {
+	slug = strings.Trim(truncRunes(slug, maxTermLen), "-")
+	name = truncRunes(clean(name), maxTermLen)
 	key := typ + "|" + slug
 	if _, ok := imp.taxByKey[key]; ok {
 		return key
@@ -642,7 +657,7 @@ func (imp *importer) importCategoryTree(ctx context.Context) error {
 	for _, ch := range chunks(all, 500) {
 		var args []any
 		for _, c := range ch {
-			args = append(args, c.ID, clean(c.Name), c.Slug)
+			args = append(args, c.ID, truncRunes(clean(c.Name), maxTermLen), truncRunes(c.Slug, maxTermLen))
 		}
 		if _, err := imp.db.ExecContext(ctx, `
 			INSERT INTO taxonomies (id, name, slug, type, parent_id) VALUES `+
@@ -660,7 +675,7 @@ func (imp *importer) importCategoryTree(ctx context.Context) error {
 			if c.Parent != 0 && exists[c.Parent] {
 				parent = c.Parent
 			}
-			args = append(args, c.ID, clean(c.Name), c.Slug, parent)
+			args = append(args, c.ID, truncRunes(clean(c.Name), maxTermLen), truncRunes(c.Slug, maxTermLen), parent)
 		}
 		if _, err := imp.db.ExecContext(ctx, `
 			INSERT INTO taxonomies (id, name, slug, type, parent_id) VALUES `+
@@ -772,8 +787,11 @@ func (imp *importer) upsertProducts(ctx context.Context, ps []wooProduct) error 
 		if p.Type == "variable" {
 			ptype = "variable"
 		}
-		args = append(args, p.ID, p.SKU, clean(p.Name), p.Slug, p.Description, p.ShortDescription,
-			parsePrice(p.Price), firstImage(p.Images), mapStock(p.StockStatus), ptype, nullParent(p.Parent))
+		// Truncate to the column sizes in schema.sql: one over-long value
+		// would otherwise fail the whole batch.
+		args = append(args, p.ID, truncRunes(p.SKU, 100), truncRunes(clean(p.Name), 255),
+			truncRunes(p.Slug, 255), p.Description, p.ShortDescription, parsePrice(p.Price),
+			truncRunes(firstImage(p.Images), 512), mapStock(p.StockStatus), ptype, nullParent(p.Parent))
 	}
 	_, err := imp.db.ExecContext(ctx, `
 		INSERT INTO products
@@ -1018,7 +1036,7 @@ func metaRows(productID int64, metas []wooMeta) []any {
 		if val == "" {
 			continue
 		}
-		args = append(args, productID, m.Key, val)
+		args = append(args, productID, truncRunes(m.Key, 255), val)
 	}
 	return args
 }
