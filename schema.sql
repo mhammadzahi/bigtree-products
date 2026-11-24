@@ -130,4 +130,18 @@ CREATE TABLE `product_meta` (
     REFERENCES `products` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- -----------------------------------------------------------------------------
+-- sync_state — bookkeeping for scheduled syncs (fill_prodcut.go also creates it
+--   on demand). `woocommerce_last_sync` holds the RFC 3339 UTC start time of the
+--   last successful sync; incremental runs fetch products modified after it.
+--   Dropping it forces the next incremental run to ask for a `full` run first.
+-- -----------------------------------------------------------------------------
+DROP TABLE IF EXISTS `sync_state`;
+CREATE TABLE `sync_state` (
+  `name`       VARCHAR(64)  NOT NULL,
+  `value`      VARCHAR(255) NOT NULL,
+  `updated_at` TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET FOREIGN_KEY_CHECKS = 1;
