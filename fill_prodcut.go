@@ -42,10 +42,12 @@ import (
 	"fmt"
 	"html"
 	"log"
+	"math/rand/v2"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -54,6 +56,8 @@ import (
 
 	"bigtree-products/internal/config"
 	"bigtree-products/internal/database"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 const (
@@ -413,6 +417,10 @@ func (imp *importer) writeProducts(ctx context.Context, products []wooProduct) e
 		return fmt.Errorf("load taxonomy ids: %w", err)
 	}
 
+	// Sort by id so each chunk covers its own id range: parallel workers then
+	// lock disjoint parts of the product_taxonomy / product_meta indexes.
+	sort.Slice(products, func(i, j int) bool { return products[i].ID < products[j].ID })
+
 	var done int64
 	if err := runWorkers(chunks(products, chunkSize), productWorkers, func(ps []wooProduct) error {
 		if err := imp.writeChunk(ctx, ps, productTaxos, authTaxID); err != nil {
@@ -697,12 +705,66 @@ func (imp *importer) touch(ids ...int64) {
 	imp.touchMu.Unlock()
 }
 
+// dbExec is satisfied by both *sql.DB and *sql.Tx.
+type dbExec interface {
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// retryable reports MariaDB errors that a retry can clear: deadlock (1213) and
+// lock wait timeout (1205).
+func retryable(err error) bool {
+	var me *mysql.MySQLError
+	return errors.As(err, &me) && (me.Number == 1213 || me.Number == 1205)
+}
+
+// inTx runs fn in one READ COMMITTED transaction, retrying on deadlock / lock
+// wait timeout. READ COMMITTED takes no gap locks, so parallel workers that
+// DELETE + INSERT link/meta rows for neighbouring product ids do not deadlock;
+// the retry covers whatever contention remains. fn must be safe to re-run
+// (every write here is an upsert or delete-then-insert).
+func (imp *importer) inTx(ctx context.Context, what string, fn func(tx *sql.Tx) error) error {
+	const maxAttempts = 6
+	var err error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		if attempt > 1 {
+			wait := time.Duration(attempt*attempt)*250*time.Millisecond + rand.N(500*time.Millisecond)
+			log.Printf("  retry %s (attempt %d) after %s: %v", what, attempt, wait.Round(time.Millisecond), err)
+			select {
+			case <-time.After(wait):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		var tx *sql.Tx
+		tx, err = imp.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
+		if err != nil {
+			if retryable(err) {
+				continue
+			}
+			return fmt.Errorf("%s: %w", what, err)
+		}
+		if err = fn(tx); err != nil {
+			tx.Rollback()
+		} else {
+			err = tx.Commit()
+		}
+		if err == nil {
+			return nil
+		}
+		if !retryable(err) {
+			return fmt.Errorf("%s: %w", what, err)
+		}
+	}
+	return fmt.Errorf("%s: gave up after %d attempts: %w", what, maxAttempts, err)
+}
+
 // touchLinked marks every taxonomy currently linked to the given products.
-func (imp *importer) touchLinked(ctx context.Context, productIDs []int64) error {
+func (imp *importer) touchLinked(ctx context.Context, ex dbExec, productIDs []int64) error {
 	if !imp.incremental() || len(productIDs) == 0 {
 		return nil
 	}
-	rows, err := imp.db.QueryContext(ctx,
+	rows, err := ex.QueryContext(ctx,
 		`SELECT DISTINCT taxonomy_id FROM product_taxonomy WHERE product_id IN (`+
 			placeholders(len(productIDs), "?")+`)`, int64Args(productIDs)...)
 	if err != nil {
@@ -777,7 +839,7 @@ func firstImage(imgs []wooImage) string {
 }
 
 // upsertProducts writes many products in one multi-row statement.
-func (imp *importer) upsertProducts(ctx context.Context, ps []wooProduct) error {
+func (imp *importer) upsertProducts(ctx context.Context, ex dbExec, ps []wooProduct) error {
 	if len(ps) == 0 {
 		return nil
 	}
@@ -793,7 +855,7 @@ func (imp *importer) upsertProducts(ctx context.Context, ps []wooProduct) error 
 			truncRunes(p.Slug, 255), p.Description, p.ShortDescription, parsePrice(p.Price),
 			truncRunes(firstImage(p.Images), 512), mapStock(p.StockStatus), ptype, nullParent(p.Parent))
 	}
-	_, err := imp.db.ExecContext(ctx, `
+	_, err := ex.ExecContext(ctx, `
 		INSERT INTO products
 		  (id, sku, title, slug, description, short_description, price, image_url, stock_status, product_type, parent_id)
 		VALUES `+placeholders(len(ps), "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")+`
@@ -807,23 +869,30 @@ func (imp *importer) upsertProducts(ctx context.Context, ps []wooProduct) error 
 }
 
 // writeChunk upserts a batch of products and rebuilds their taxonomy links and
-// meta with a handful of statements in total.
+// meta with a handful of statements, all in one retried transaction.
 func (imp *importer) writeChunk(ctx context.Context, ps []wooProduct, productTaxos map[int64][]string, authID map[string]int64) error {
+	what := fmt.Sprintf("products %d..%d", ps[0].ID, ps[len(ps)-1].ID)
+	return imp.inTx(ctx, what, func(tx *sql.Tx) error {
+		return imp.writeChunkTx(ctx, tx, ps, productTaxos, authID)
+	})
+}
+
+func (imp *importer) writeChunkTx(ctx context.Context, tx *sql.Tx, ps []wooProduct, productTaxos map[int64][]string, authID map[string]int64) error {
 	ids := make([]int64, len(ps))
 	for i, p := range ps {
 		ids[i] = p.ID
 	}
 	idPH := placeholders(len(ids), "?")
 
-	if err := imp.touchLinked(ctx, ids); err != nil { // old links: counts may drop
+	if err := imp.touchLinked(ctx, tx, ids); err != nil { // old links: counts may drop
 		return err
 	}
-	if err := imp.upsertProducts(ctx, ps); err != nil {
-		return fmt.Errorf("products %d..: %w", ids[0], err)
+	if err := imp.upsertProducts(ctx, tx, ps); err != nil {
+		return err
 	}
 
 	// links
-	if _, err := imp.db.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM product_taxonomy WHERE product_id IN (`+idPH+`)`, int64Args(ids)...); err != nil {
 		return err
 	}
@@ -842,7 +911,7 @@ func (imp *importer) writeChunk(ctx context.Context, ps []wooProduct, productTax
 		}
 	}
 	if len(linkArgs) > 0 {
-		if _, err := imp.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`INSERT IGNORE INTO product_taxonomy (product_id, taxonomy_id) VALUES `+
 				placeholders(len(linkArgs)/2, "(?, ?)"), linkArgs...); err != nil {
 			return err
@@ -853,7 +922,7 @@ func (imp *importer) writeChunk(ctx context.Context, ps []wooProduct, productTax
 	}
 
 	// meta
-	if _, err := imp.db.ExecContext(ctx,
+	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM product_meta WHERE product_id IN (`+idPH+`)`, int64Args(ids)...); err != nil {
 		return err
 	}
@@ -862,7 +931,7 @@ func (imp *importer) writeChunk(ctx context.Context, ps []wooProduct, productTax
 		metaArgs = append(metaArgs, metaRows(p.ID, p.MetaData)...)
 	}
 	for _, c := range chunks(metaArgs, metaBatch*3) {
-		if _, err := imp.db.ExecContext(ctx,
+		if _, err := tx.ExecContext(ctx,
 			`INSERT INTO product_meta (product_id, meta_key, meta_value) VALUES `+
 				placeholders(len(c)/3, "(?, ?, ?)"), c...); err != nil {
 			return err
@@ -916,11 +985,6 @@ func (imp *importer) importVariations(ctx context.Context, parent wooProduct) er
 		page++
 	}
 
-	for _, c := range chunks(children, chunkSize) {
-		if err := imp.upsertProducts(ctx, c); err != nil {
-			return err
-		}
-	}
 	// Drop variations removed on WooCommerce.
 	q := `DELETE FROM products WHERE parent_id = ?`
 	args := []any{parent.ID}
@@ -930,8 +994,15 @@ func (imp *importer) importVariations(ctx context.Context, parent wooProduct) er
 			args = append(args, c.ID)
 		}
 	}
-	_, err := imp.db.ExecContext(ctx, q, args...)
-	return err
+	return imp.inTx(ctx, fmt.Sprintf("variations of %d", parent.ID), func(tx *sql.Tx) error {
+		for _, c := range chunks(children, chunkSize) {
+			if err := imp.upsertProducts(ctx, tx, c); err != nil {
+				return err
+			}
+		}
+		_, err := tx.ExecContext(ctx, q, args...)
+		return err
+	})
 }
 
 // deleteProducts removes products (variations cascade) and marks their terms
@@ -939,16 +1010,23 @@ func (imp *importer) importVariations(ctx context.Context, parent wooProduct) er
 func (imp *importer) deleteProducts(ctx context.Context, ids []int64) (int64, error) {
 	var n int64
 	for _, c := range chunks(ids, 500) {
-		if err := imp.touchLinked(ctx, c); err != nil {
-			return n, err
-		}
-		res, err := imp.db.ExecContext(ctx,
-			`DELETE FROM products WHERE id < ? AND id IN (`+placeholders(len(c), "?")+`)`,
-			append([]any{csvProductIDBase}, int64Args(c)...)...)
+		var k int64
+		err := imp.inTx(ctx, "delete products", func(tx *sql.Tx) error {
+			if err := imp.touchLinked(ctx, tx, c); err != nil {
+				return err
+			}
+			res, err := tx.ExecContext(ctx,
+				`DELETE FROM products WHERE id < ? AND id IN (`+placeholders(len(c), "?")+`)`,
+				append([]any{csvProductIDBase}, int64Args(c)...)...)
+			if err != nil {
+				return err
+			}
+			k, _ = res.RowsAffected()
+			return nil
+		})
 		if err != nil {
 			return n, err
 		}
-		k, _ := res.RowsAffected()
 		n += k
 	}
 	return n, nil
