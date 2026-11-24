@@ -37,6 +37,8 @@ service-account.json
 bin/server
 
 *.csv
+*.log
 
 bin/sync
 logs/
+
