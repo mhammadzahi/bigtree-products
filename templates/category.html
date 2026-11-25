@@ -5,13 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} · Bigtree</title>
   <link rel="stylesheet" href="/static/css/style.css?v=9">
-  <link rel="stylesheet" href="/static/css/category.css?v=1">
+  <link rel="stylesheet" href="/static/css/category.css?v=2">
 </head>
 <body>
   <header class="site-header">
     <a href="/categories" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
     <div class="header-right">
-      <nav class="main-nav"><a href="/categories" class="is-on">Categories</a><a href="/products">Search</a></nav>
+      <nav class="main-nav"><a href="/categories" class="is-on">Categories</a><a href="/selections">Selections</a><a href="/products">Search</a></nav>
       {{ if .User }}<span class="muted user-email">{{ .User.Email }}</span>{{ end }}
       <form method="post" action="/logout"><button class="btn btn-ghost">Sign out</button></form>
     </div>
@@ -75,6 +75,7 @@
     {{ end }}
   </main>
 
-  {{ if .Leaf }}<script src="/static/js/category.js?v=1"></script>{{ end }}
+  <script src="/static/js/cards.js?v=1"></script>
+  {{ if .Leaf }}<script src="/static/js/category.js?v=2"></script>{{ end }}
 </body>
 </html>

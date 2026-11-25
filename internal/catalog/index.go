@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"unicode"
 )
@@ -141,6 +142,13 @@ type Index struct {
 
 	TermName map[string]map[string]string // type -> slug -> name (pa_types, pa_style, pa_application)
 	Projects map[string]string            // project key -> label
+
+	// Selection > Collection tree (collections.go).
+	CollBySlug   map[string]*Term
+	CollChildren map[int64][]int64 // by name
+	CollDirect   map[int64][]int64 // term -> visible products directly on it
+	collTree     map[int64][]int64 // memo: term -> products in its subtree
+	collMu       sync.Mutex
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +341,10 @@ func Build(ctx context.Context, db *sql.DB) (*Index, error) {
 		ix.resolveCollection(p)
 	}
 
-	// 7. per-top indexes
+	// 7. Selection > Collection tree
+	ix.buildCollections()
+
+	// 8. per-top indexes
 	for _, slug := range Tops {
 		t := ix.CatBySlug[slug]
 		if t == nil {

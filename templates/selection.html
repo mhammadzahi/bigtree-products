@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }} · Bigtree</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=9">
+  <link rel="stylesheet" href="/static/css/category.css?v=2">
+</head>
+<body>
+  <header class="site-header">
+    <a href="/categories" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
+    <div class="header-right">
+      <nav class="main-nav"><a href="/categories">Categories</a><a href="/selections" class="is-on">Selections</a><a href="/products">Search</a></nav>
+      {{ if .User }}<span class="muted user-email">{{ .User.Email }}</span>{{ end }}
+      <form method="post" action="/logout"><button class="btn btn-ghost">Sign out</button></form>
+    </div>
+  </header>
+
+  <main class="cat-page">
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/selections">All Selections</a>
+      {{ range .Crumbs }}<span aria-hidden="true">›</span><a href="/collection/{{ .Slug }}">{{ .Name }}</a>{{ end }}
+    </nav>
+
+    <div class="bt-sel" id="bt-sel" data-mode="{{ .Mode }}">
+      <div class="bt-lg-titlerow">
+        <h1 class="cat-heading">{{ .Heading }}</h1>
+        {{ if eq .Mode "products" }}<p class="bt-lg-count">{{ .Total }} {{ plural .Total "product" "products" }}</p>{{ end }}
+      </div>
+
+      {{ if .ShowBar }}
+      <div class="bt-sel-bar" role="toolbar" aria-label="Filters">
+        {{ if gt (len .Pills) 1 }}
+        <button type="button" class="bt-lg-pill bt-sel-pill is-on" data-filter="" aria-pressed="true">ALL</button>
+        {{ range .Pills }}
+        <button type="button" class="bt-lg-pill bt-sel-pill" data-filter="{{ .Slugs }}" aria-pressed="false">{{ .Label }}</button>
+        {{ end }}
+        {{ end }}
+        {{ if .OutdoorCount }}
+        <button type="button" class="bt-lg-pill bt-lg-switch bt-sel-outdoor" aria-pressed="false" role="switch" aria-checked="false">
+          <span class="bt-lg-switch-knob" aria-hidden="true"></span>Outdoor<span class="bt-lg-n">{{ .OutdoorCount }}</span>
+        </button>
+        {{ end }}
+      </div>
+      {{ end }}
+
+      {{ if eq .Mode "products" }}
+      <div class="bt-lg-grid" id="bt-sel-grid">
+        {{ range .Products }}
+        <div class="bt-sel-item" data-cats="{{ .Slugs }}"{{ if .Card.Outdoor }} data-outdoor="1"{{ end }}>{{ template "cat-card" .Card }}</div>
+        {{ end }}
+      </div>
+      <p class="empty bt-sel-empty" hidden>No products match these filters.</p>
+      {{ else }}
+      <div class="cat-tiles" id="bt-sel-grid">
+        {{ range .Cards }}
+        <a class="cat-tile bt-sel-item" href="/collection/{{ .Slug }}" data-cats="{{ .Slugs }}"{{ if .Outdoor }} data-outdoor="1"{{ end }}>
+          <span class="cat-tile-media">
+            {{ if .Image }}<img src="{{ .Image }}" alt="" loading="lazy" decoding="async">{{ end }}
+          </span>
+          <span class="cat-tile-name">{{ .Name }}</span>
+          {{ if .Labels }}<span class="cat-tile-count">{{ .Labels }}</span>{{ end }}
+        </a>
+        {{ end }}
+      </div>
+      <p class="empty bt-sel-empty" hidden>{{ if eq .Mode "all" }}No Selections match these filters.{{ else }}No Collections match these filters.{{ end }}</p>
+      {{ end }}
+    </div>
+  </main>
+
+  <script src="/static/js/cards.js?v=1"></script>
+  <script src="/static/js/selection.js?v=1"></script>
+</body>
+</html>

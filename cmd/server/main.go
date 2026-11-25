@@ -59,7 +59,9 @@ func main() {
 	{
 		auth.GET("/categories", categories.Categories)
 		auth.GET("/category/:slug", categories.Category)
-		auth.GET("/products", h.Catalog) // search across every product
+		auth.GET("/selections", categories.AllSelections)
+		auth.GET("/collection/:slug", categories.Collection) // Selection grid or leaf collection
+		auth.GET("/products", h.Catalog)                     // search across every product
 		auth.GET("/product/:slug", h.ProductDetail)
 		auth.POST("/product/:slug/quote", quotationHandler.GenerateProductQuotation)
 	}

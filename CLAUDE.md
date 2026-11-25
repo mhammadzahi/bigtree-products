@@ -41,8 +41,11 @@ All tools read DB/API settings from `.env` via `internal/config` (literal values
   - `index.go`: build from the DB, per-top config, tiles, colour versions and swatches.
   - `query.go`: `f_*` URL filters, cards, the filter bar with honest counts.
   - `holder.go`: background rebuild when `sync_state`/products change.
+  - `collections.go`: Selection > Collection tree, All Selections, Selection grid,
+    leaf collection products.
 - `internal/handlers/category.go` — category pages + `/api/v1/category/:slug`
-  fragments. `funcs.go` holds the shared template funcs.
+  fragments. `selection.go` — Selection / Collection pages. `funcs.go` holds the
+  shared template funcs.
 - `cmd/migrate` — applies `.sql` files with `multiStatements=true`.
 - `cmd/hashpw` — bcrypt helper.
 - `internal/config` — `.env` loader + `Config` (DSN, ListenAddr, SecureCookie, Google ids).
@@ -54,7 +57,9 @@ All tools read DB/API settings from `.env` via `internal/config` (literal values
   cells (constants at top of file), exports PDF, stamps product image with pdfcpu.
 - `templates/*.html`, `static/js/app.js`, `static/css/style.css` — frontend.
   Category pages: `category.html` + `catalog_parts.html` (fragments shared with
-  the API), `static/js/category.js`, `static/css/category.css`.
+  the API), `static/js/category.js`, `static/css/category.css`. Selection pages:
+  `selection.html` + `static/js/selection.js`. `static/js/cards.js` holds the card
+  extras (hover image, download) and is loaded on every page with cards.
 - `migrations/` — incremental schema changes applied with `cmd/migrate`.
 - Root `*.go` scripts (`fill_prodcut.go`, `import_csv.go`, `add_user.go`,
   `dump_sample.go`) carry `//go:build ignore`; run each with `go run <file>`.
@@ -67,10 +72,13 @@ Auth (cookie `bt_session`). No registration, no roles.
 - `GET /categories`: the 6 top-level tiles.
 - `GET /category/:slug`: a tile page or a leaf grid with filters.
 - `GET /api/v1/category/:slug?f_...[&page=N|&upto=N]`: `{count, bar, grid, more, page}`.
+- `GET /selections[?filters=a,b&f_out=1]`: All Selections.
+- `GET /collection/:slug[?f_out=1]`: a Selection grid (the term has children) or a
+  leaf collection's products.
 - `GET /products` + `GET /api/v1/products`: the older search page across every product.
 - `GET /product/:slug`, `POST /product/:slug/quote` (PDF, or `?format=json` → sheet URL).
 
-## Category pages (Phase 1 of the live-site filter port)
+## Category and Selection pages (port of the live-site filters)
 
 Spec: `bigtree_filters_and_product_cards_platform_neutral_brief.md`. Source rules:
 the snippets in `BigTree_Filters_Architecture_And_Snippets_*.md` (Data Layer v5,
@@ -91,8 +99,19 @@ are excluded on purpose.
 - **Colour versions** (`related_series_products`, hidden finishes that share category
   and collection) become cards only under a Color filter. **Swatches** roll their
   colours up into the lead.
-- **Not built yet (Phase 2):** the Selection, Collection and All Selections pages, the
-  Outdoor carry-over from them, and the card's "+" enquiry-list button (left out on purpose).
+- **Selection pages** (#181/#212 rules, in `collections.go`). They filter in the
+  browser over the rendered cards. No card shows a count.
+  - **All Selections:** root collections with products. Department pills are AND (`?filters=`).
+  - **Selection grid:** a term with ≤3 children, one of which has its own children,
+    unpacks those folders. Collections whose products are all under a "Finishes"
+    category are hidden. Pill depth is adaptive (level 1 if ≥3 departments, else
+    level 2 or 3). Only pills carried by a shown card appear. Pills are single-select.
+  - **Leaf collection:** products directly on the term. Child-category pills appear
+    only when there are more than one.
+  - The Outdoor switch is a product flag (the `pa_features` Outdoor term). When on, it
+    adds `f_out=1` to every card link, so it carries into the next page.
+- **Not built:** the card's "+" enquiry-list button (left out on purpose), and
+  per-country hiding (also set aside on the live site).
 
 ## Data model (schema.sql)
 

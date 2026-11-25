@@ -155,3 +155,9 @@
   .bt-lg-head { position: static; }
   .main-nav { display: none; }
 }
+
+/* ---------- Selection / Collection pages --------------------------------- */
+.bt-sel-bar { display: flex; flex-wrap: wrap; gap: .5rem; margin: 0 0 1.25rem; }
+.bt-sel-pill { text-transform: uppercase; letter-spacing: .02em; font-size: .8rem; }
+.bt-sel-item[hidden] { display: none !important; }
+.bt-sel .bt-lg-titlerow .cat-heading { margin-bottom: .75rem; }
