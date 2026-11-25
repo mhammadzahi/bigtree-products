@@ -198,10 +198,12 @@ type wooProduct struct {
 	Price            string     `json:"price"`
 	Description      string     `json:"description"`
 	ShortDescription string     `json:"short_description"`
-	StockStatus      string     `json:"stock_status"` // instock | outofstock | onbackorder
+	StockStatus      string     `json:"stock_status"`       // instock | outofstock | onbackorder
+	Status           string     `json:"status"`             // publish | private | ...
+	Visibility       string     `json:"catalog_visibility"` // visible | catalog | search | hidden
 	Parent           int64      `json:"parent_id"`
 	Categories       []wooTerm  `json:"categories"`
-	Tags             []wooTerm  `json:"tags"`   // used as B2B "collections"
+	Tags             []wooTerm  `json:"tags"`   // product_tag -> taxonomy type "tag"
 	Brands           []wooTerm  `json:"brands"` // WooCommerce Brands taxonomy
 	Images           []wooImage `json:"images"`
 	Attributes       []wooAttr  `json:"attributes"`
@@ -271,14 +273,20 @@ func attrType(a wooAttr) string {
 const testModeLimit = 1000
 
 type importer struct {
-	db          *sql.DB
-	client      *http.Client
-	base        string // https://store/wp-json/wc/v3
-	key         string
-	secret      string
-	mode        string
-	maxProducts int    // 0 = unlimited; >0 = cap (test mode)
-	since       string // modified_after (GMT, ISO 8601); "" = everything
+	db     *sql.DB
+	client *http.Client
+	base   string // https://store/wp-json/wc/v3
+	wpBase string // https://store/wp-json/wp/v2
+	key    string
+	secret string
+	wpUser string // WordPress Application Password login (optional)
+	wpPass string
+	mode   string
+
+	collIDs     map[int64]bool    // known collection term ids
+	prodColls   map[int64][]int64 // product id -> collection term ids
+	maxProducts int               // 0 = unlimited; >0 = cap (test mode)
+	since       string            // modified_after (GMT, ISO 8601); "" = everything
 
 	taxByKey    map[string]*taxo // "type|slug" -> taxo collected this run
 	existingTax map[string]int64 // "type|slug" -> id already in the DB
@@ -323,8 +331,11 @@ func main() {
 		db:          db,
 		client:      &http.Client{Timeout: 120 * time.Second},
 		base:        store + "/wp-json/wc/v3",
+		wpBase:      firstEnv("WP_SITE_URL", store) + "/wp-json/wp/v2",
 		key:         key,
 		secret:      secret,
+		wpUser:      firstEnv("WP_USERNAME", os.Getenv("WP_USER")),
+		wpPass:      os.Getenv("WP_APP_PASSWORD"),
 		mode:        mode,
 		maxProducts: maxProducts,
 		taxByKey:    map[string]*taxo{},
@@ -372,6 +383,9 @@ func (imp *importer) run(ctx context.Context) error {
 	if err := imp.importCategoryTree(ctx); err != nil {
 		return fmt.Errorf("categories: %w", err)
 	}
+	if err := imp.importCollections(ctx); err != nil {
+		return fmt.Errorf("collections: %w", err)
+	}
 	if err := imp.loadExistingTaxonomies(ctx); err != nil {
 		return fmt.Errorf("load taxonomies: %w", err)
 	}
@@ -383,6 +397,9 @@ func (imp *importer) run(ctx context.Context) error {
 	log.Printf("fetched %d products from WooCommerce", len(products))
 
 	if len(products) > 0 {
+		if err := imp.fetchProductCollections(ctx, products); err != nil {
+			return err
+		}
 		if err := imp.writeProducts(ctx, products); err != nil {
 			return err
 		}
@@ -563,12 +580,14 @@ func (imp *importer) collectTaxonomies(p wooProduct) []string {
 		}
 		keys = append(keys, imp.getOrAddTax("category", c.Slug, c.Name, c.ID))
 	}
-	// Product tags model the B2B "collections" (e.g. "AZ Collection").
+	// Product tags (e.g. "AZ Collection") are kept as type "tag". The real
+	// Selection > Collection tree is the WordPress `collection` taxonomy,
+	// synced separately by importCollections.
 	for _, tg := range p.Tags {
 		if tg.Slug == "" {
 			continue
 		}
-		keys = append(keys, imp.getOrAddTax("collection", tg.Slug, tg.Name, tg.ID))
+		keys = append(keys, imp.getOrAddTax("tag", tg.Slug, tg.Name, tg.ID))
 	}
 	for _, b := range p.Brands {
 		if b.Slug == "" {
@@ -630,20 +649,21 @@ func (imp *importer) loadTaxonomyIDs(ctx context.Context) (map[string]int64, err
 	return out, rows.Err()
 }
 
+// treeTerm is one hierarchical term (WooCommerce category or WordPress
+// collection) as returned by the REST APIs.
+type treeTerm struct {
+	ID     int64  `json:"id"`
+	Name   string `json:"name"`
+	Slug   string `json:"slug"`
+	Parent int64  `json:"parent"`
+}
+
 // importCategoryTree pulls every product category and stores them with their
-// parent links, so sub-categories nest correctly. Two batched passes satisfy
-// the self-referencing foreign key: rows first, then parent links.
+// parent links, so sub-categories nest correctly.
 func (imp *importer) importCategoryTree(ctx context.Context) error {
-	type wc struct {
-		ID     int64  `json:"id"`
-		Name   string `json:"name"`
-		Slug   string `json:"slug"`
-		Parent int64  `json:"parent"`
-	}
-	var all []wc
-	page := 1
-	for {
-		var batch []wc
+	var all []treeTerm
+	for page := 1; ; page++ {
+		var batch []treeTerm
 		more, err := imp.getJSON(ctx, "/products/categories",
 			url.Values{"per_page": {"100"}, "page": {strconv.Itoa(page)}}, &batch)
 		if err != nil {
@@ -653,23 +673,61 @@ func (imp *importer) importCategoryTree(ctx context.Context) error {
 		if !more || len(batch) == 0 {
 			break
 		}
-		page++
 	}
+	if err := imp.upsertTermTree(ctx, "category", all); err != nil {
+		return err
+	}
+	log.Printf("imported %d categories (with hierarchy)", len(all))
+	return nil
+}
 
+// importCollections pulls the WordPress `collection` taxonomy (Selection >
+// Collection tree). It is public, but the WP login is used when set.
+func (imp *importer) importCollections(ctx context.Context) error {
+	var all []treeTerm
+	for page := 1; ; page++ {
+		var batch []treeTerm
+		more, err := imp.getWP(ctx, "/collection", url.Values{
+			"per_page": {"100"},
+			"page":     {strconv.Itoa(page)},
+			"_fields":  {"id,name,slug,parent"},
+		}, &batch)
+		if err != nil {
+			return err
+		}
+		all = append(all, batch...)
+		if !more || len(batch) == 0 {
+			break
+		}
+	}
+	if err := imp.upsertTermTree(ctx, "collection", all); err != nil {
+		return err
+	}
+	imp.collIDs = make(map[int64]bool, len(all))
+	for _, t := range all {
+		imp.collIDs[t.ID] = true
+	}
+	log.Printf("imported %d collections (with hierarchy)", len(all))
+	return nil
+}
+
+// upsertTermTree stores hierarchical terms of one type. Two batched passes
+// satisfy the self-referencing foreign key: rows first, then parent links.
+func (imp *importer) upsertTermTree(ctx context.Context, typ string, all []treeTerm) error {
 	exists := make(map[int64]bool, len(all))
 	for _, c := range all {
 		exists[c.ID] = true
 	}
 
-	// pass 1: upsert every category (parent untouched)
+	// pass 1: upsert every term (parent untouched)
 	for _, ch := range chunks(all, 500) {
 		var args []any
 		for _, c := range ch {
-			args = append(args, c.ID, truncRunes(clean(c.Name), maxTermLen), truncRunes(c.Slug, maxTermLen))
+			args = append(args, c.ID, truncRunes(clean(c.Name), maxTermLen), truncRunes(c.Slug, maxTermLen), typ)
 		}
 		if _, err := imp.db.ExecContext(ctx, `
 			INSERT INTO taxonomies (id, name, slug, type, parent_id) VALUES `+
-			placeholders(len(ch), "(?, ?, ?, 'category', NULL)")+`
+			placeholders(len(ch), "(?, ?, ?, ?, NULL)")+`
 			ON DUPLICATE KEY UPDATE name = VALUES(name), slug = VALUES(slug)`, args...); err != nil {
 			return err
 		}
@@ -683,16 +741,70 @@ func (imp *importer) importCategoryTree(ctx context.Context) error {
 			if c.Parent != 0 && exists[c.Parent] {
 				parent = c.Parent
 			}
-			args = append(args, c.ID, truncRunes(clean(c.Name), maxTermLen), truncRunes(c.Slug, maxTermLen), parent)
+			args = append(args, c.ID, truncRunes(clean(c.Name), maxTermLen), truncRunes(c.Slug, maxTermLen), typ, parent)
 		}
 		if _, err := imp.db.ExecContext(ctx, `
 			INSERT INTO taxonomies (id, name, slug, type, parent_id) VALUES `+
-			placeholders(len(ch), "(?, ?, ?, 'category', ?)")+`
+			placeholders(len(ch), "(?, ?, ?, ?, ?)")+`
 			ON DUPLICATE KEY UPDATE parent_id = VALUES(parent_id)`, args...); err != nil {
 			return err
 		}
 	}
-	log.Printf("imported %d categories (with hierarchy)", len(all))
+	return nil
+}
+
+// fetchProductCollections reads which collection terms each product sits in,
+// from the WordPress REST API (WooCommerce's API does not return custom
+// taxonomies). Private products need the WP login; without it only
+// published products get their collections.
+func (imp *importer) fetchProductCollections(ctx context.Context, products []wooProduct) error {
+	imp.prodColls = make(map[int64][]int64, len(products))
+	status := "publish"
+	if imp.wpUser != "" && imp.wpPass != "" {
+		status = "publish,private"
+	} else {
+		log.Printf("warning: WP_USER / WP_APP_PASSWORD not set — private products get no collections")
+	}
+
+	ids := make([]int64, 0, len(products))
+	for _, p := range products {
+		ids = append(ids, p.ID)
+	}
+	var mu sync.Mutex
+	var done int64
+	err := runWorkers(chunks(ids, 100), 6, func(c []int64) error {
+		include := make([]string, len(c))
+		for i, id := range c {
+			include[i] = strconv.FormatInt(id, 10)
+		}
+		var batch []struct {
+			ID         int64   `json:"id"`
+			Collection []int64 `json:"collection"`
+		}
+		if _, err := imp.getWP(ctx, "/product", url.Values{
+			"include":  {strings.Join(include, ",")},
+			"per_page": {"100"},
+			"status":   {status},
+			"_fields":  {"id,collection"},
+		}, &batch); err != nil {
+			return err
+		}
+		mu.Lock()
+		for _, b := range batch {
+			if len(b.Collection) > 0 {
+				imp.prodColls[b.ID] = b.Collection
+			}
+		}
+		mu.Unlock()
+		if n := atomic.AddInt64(&done, int64(len(c))); n%5000 < 100 {
+			log.Printf("  collections for %d/%d products", n, len(ids))
+		}
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("product collections: %w", err)
+	}
+	log.Printf("collections linked for %d of %d products", len(imp.prodColls), len(products))
 	return nil
 }
 
@@ -838,6 +950,38 @@ func firstImage(imgs []wooImage) string {
 	return ""
 }
 
+// galleryJSON returns every image after the first as a JSON array (the card's
+// hover image is the first gallery image), or nil when there is none.
+func galleryJSON(imgs []wooImage) any {
+	var srcs []string
+	for i, im := range imgs {
+		if i > 0 && im.Src != "" {
+			srcs = append(srcs, im.Src)
+		}
+	}
+	if len(srcs) == 0 {
+		return nil
+	}
+	b, _ := json.Marshal(srcs)
+	return string(b)
+}
+
+// postStatus keeps the WooCommerce status; variations carry none and inherit
+// "publish" (they are only shown through their parent).
+func postStatus(s string) string {
+	if s == "" {
+		return "publish"
+	}
+	return truncRunes(s, 20)
+}
+
+func catalogVisibility(s string) string {
+	if s == "" {
+		return "visible"
+	}
+	return truncRunes(s, 20)
+}
+
 // upsertProducts writes many products in one multi-row statement.
 func (imp *importer) upsertProducts(ctx context.Context, ex dbExec, ps []wooProduct) error {
 	if len(ps) == 0 {
@@ -853,18 +997,21 @@ func (imp *importer) upsertProducts(ctx context.Context, ex dbExec, ps []wooProd
 		// would otherwise fail the whole batch.
 		args = append(args, p.ID, truncRunes(p.SKU, 100), truncRunes(clean(p.Name), 255),
 			truncRunes(p.Slug, 255), p.Description, p.ShortDescription, parsePrice(p.Price),
-			truncRunes(firstImage(p.Images), 512), mapStock(p.StockStatus), ptype, nullParent(p.Parent))
+			truncRunes(firstImage(p.Images), 512), mapStock(p.StockStatus), ptype, nullParent(p.Parent),
+			postStatus(p.Status), catalogVisibility(p.Visibility), galleryJSON(p.Images))
 	}
 	_, err := ex.ExecContext(ctx, `
 		INSERT INTO products
-		  (id, sku, title, slug, description, short_description, price, image_url, stock_status, product_type, parent_id)
-		VALUES `+placeholders(len(ps), "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")+`
+		  (id, sku, title, slug, description, short_description, price, image_url, stock_status, product_type, parent_id,
+		   status, catalog_visibility, gallery)
+		VALUES `+placeholders(len(ps), "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")+`
 		ON DUPLICATE KEY UPDATE
 		  sku=VALUES(sku), title=VALUES(title), slug=VALUES(slug),
 		  description=VALUES(description), short_description=VALUES(short_description),
 		  price=VALUES(price), image_url=VALUES(image_url),
 		  stock_status=VALUES(stock_status), product_type=VALUES(product_type),
-		  parent_id=VALUES(parent_id)`, args...)
+		  parent_id=VALUES(parent_id), status=VALUES(status),
+		  catalog_visibility=VALUES(catalog_visibility), gallery=VALUES(gallery)`, args...)
 	return err
 }
 
@@ -903,6 +1050,15 @@ func (imp *importer) writeChunkTx(ctx context.Context, tx *sql.Tx, ps []wooProdu
 		for _, k := range productTaxos[p.ID] {
 			id, ok := authID[k]
 			if !ok || seen[id] {
+				continue
+			}
+			seen[id] = true
+			linkArgs = append(linkArgs, p.ID, id)
+			linked = append(linked, id)
+		}
+		// Collection links come from the WordPress API (fetchProductCollections).
+		for _, id := range imp.prodColls[p.ID] {
+			if !imp.collIDs[id] || seen[id] {
 				continue
 			}
 			seen[id] = true
@@ -1206,11 +1362,23 @@ func (imp *importer) fetchIDs(ctx context.Context, status, since string) ([]int6
 	}
 }
 
-// getJSON performs an authenticated GET and decodes into dst, retrying transient
-// failures (timeouts, network errors, 429/5xx) with exponential backoff. It
-// returns hasMore=true when the X-WP-TotalPages header indicates more pages.
+// getJSON GETs a WooCommerce REST path (wc/v3, consumer key auth).
 func (imp *importer) getJSON(ctx context.Context, path string, q url.Values, dst any) (bool, error) {
-	u := imp.base + path + "?" + q.Encode()
+	return imp.fetchJSON(ctx, imp.base, imp.key, imp.secret, path, q, dst)
+}
+
+// getWP GETs a WordPress REST path (wp/v2). It uses the Application Password
+// login when set; public endpoints also work without it.
+func (imp *importer) getWP(ctx context.Context, path string, q url.Values, dst any) (bool, error) {
+	return imp.fetchJSON(ctx, imp.wpBase, imp.wpUser, imp.wpPass, path, q, dst)
+}
+
+// fetchJSON performs a GET (Basic auth when user is set) and decodes into dst,
+// retrying transient failures (timeouts, network errors, 429/5xx) with
+// exponential backoff. It returns hasMore=true when the X-WP-TotalPages header
+// indicates more pages.
+func (imp *importer) fetchJSON(ctx context.Context, base, user, pass, path string, q url.Values, dst any) (bool, error) {
+	u := base + path + "?" + q.Encode()
 	const maxAttempts = 4
 	var lastErr error
 
@@ -1230,7 +1398,9 @@ func (imp *importer) getJSON(ctx context.Context, path string, q url.Values, dst
 		if err != nil {
 			return false, err
 		}
-		req.SetBasicAuth(imp.key, imp.secret)
+		if user != "" {
+			req.SetBasicAuth(user, pass)
+		}
 		req.Header.Set("Accept", "application/json")
 
 		resp, err := imp.client.Do(req)
@@ -1261,4 +1431,12 @@ func (imp *importer) getJSON(ctx context.Context, path string, q url.Values, dst
 		return totalPages > curPage, nil
 	}
 	return false, fmt.Errorf("GET %s failed after %d attempts: %w", path, maxAttempts, lastErr)
+}
+
+// firstEnv returns the trimmed env value (no trailing slash), or fallback.
+func firstEnv(key, fallback string) string {
+	if v := strings.TrimRight(strings.TrimSpace(os.Getenv(key)), "/"); v != "" {
+		return v
+	}
+	return fallback
 }

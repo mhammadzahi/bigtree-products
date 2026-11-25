@@ -58,7 +58,10 @@ CREATE TABLE `products` (
   `stock_status`      ENUM('in_stock','out_of_stock') NOT NULL DEFAULT 'in_stock',
   `product_type`      ENUM('simple','variable')       NOT NULL DEFAULT 'simple',
   `parent_id`         BIGINT UNSIGNED DEFAULT NULL,
-  `created_at`        TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `status`            VARCHAR(20)     NOT NULL DEFAULT 'publish',  -- publish | private
+  `catalog_visibility` VARCHAR(20)    NOT NULL DEFAULT 'visible',  -- visible | catalog | search | hidden
+  `gallery`           TEXT            DEFAULT NULL,                -- JSON array of images after the first
+  `created_at`       TIMESTAMP       NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uq_products_slug` (`slug`),
   KEY `idx_products_sku` (`sku`),
@@ -76,8 +79,9 @@ CREATE TABLE `products` (
 -- taxonomies — merges wp_terms + wp_term_taxonomy into one addressable row.
 --   `type` is the WooCommerce taxonomy slug the term belongs to. It is a free
 --   VARCHAR (not an ENUM) so ANY taxonomy the store exposes fits without a
---   migration: product_cat -> 'category', product_tag -> 'tag', a custom
---   'collection'/'brand' taxonomy, or any global attribute ('pa_color', ...).
+--   migration: product_cat -> 'category', product_tag -> 'tag', the WordPress
+--   `collection` taxonomy -> 'collection' (Selection > Collection tree, ids =
+--   WP term ids), product_brand -> 'brand', or any global attribute ('pa_color', ...).
 --   `parent_id` carries the hierarchy so sub-categories nest under categories.
 -- -----------------------------------------------------------------------------
 DROP TABLE IF EXISTS `taxonomies`;

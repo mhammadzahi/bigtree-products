@@ -1,11 +1,13 @@
 # CLAUDE.md
 
 Staff-only B2B product catalog for Bigtree (staff.bigtree-group.com). Mirrors the
-WooCommerce store (bigtree-group.com) into MariaDB and serves a filterable catalog
-plus a Google Sheets → PDF quotation generator.
+WooCommerce store (bigtree-group.com) into MySQL. It serves category pages with
+filters (a port of the live site's filter engine) and a search page, plus a
+Google Sheets → PDF quotation generator.
 
-Stack: Go 1.25 (go.mod), Gin, `go-sql-driver/mysql`, MariaDB 10.11+, server-rendered
-`html/template` + Vanilla JS. Google Sheets/Drive APIs + pdfcpu for quotes.
+Stack: Go 1.25 (go.mod), Gin, `go-sql-driver/mysql`, **MySQL 8.0** (not MariaDB,
+whatever README/schema comments say), server-rendered `html/template` + Vanilla JS.
+Google Sheets/Drive APIs + pdfcpu for quotes.
 
 ## Commands
 
@@ -20,8 +22,10 @@ make sync-reconcile      # ./sync.sh reconcile    (+ delete products gone from W
 go run add_user.go <email> '<password>'      # create user / reset password
 go run dump_sample.go [n | product <id>]     # inspect raw WooCommerce JSON
 go run import_csv.go [--dry-run|--purge] a.csv b.csv   # import WC-format CSVs
+go run ./cmd/migrate migrations/002_filters.sql   # schema change for the filters (re-runnable)
 ./deploy.sh [setup]      # on the Ubuntu server: pull, build, restart systemd unit bt-products
-go vet ./...             # no test suite exists
+go vet ./...
+go test ./internal/catalog/   # filter rule tests (fixtures = the live snippets' self-tests)
 ```
 
 All tools read DB/API settings from `.env` via `internal/config` (literal values, no
@@ -29,8 +33,16 @@ All tools read DB/API settings from `.env` via `internal/config` (literal values
 
 ## Layout
 
-- `cmd/server/main.go` — route wiring, template funcs (`contains`, `add`, `sub`,
-  `safeHTML`, `label`).
+- `cmd/server/main.go` — route wiring; starts the catalog index holder.
+- `internal/catalog` — in-memory product index behind the category pages:
+  - `text.go`: `Norm`, keyword scanner, natural sort.
+  - `rules.go`: material, colour and Fabrics families; feature roles; Martindale,
+    lightfastness and fire-standard parsers.
+  - `index.go`: build from the DB, per-top config, tiles, colour versions and swatches.
+  - `query.go`: `f_*` URL filters, cards, the filter bar with honest counts.
+  - `holder.go`: background rebuild when `sync_state`/products change.
+- `internal/handlers/category.go` — category pages + `/api/v1/category/:slug`
+  fragments. `funcs.go` holds the shared template funcs.
 - `cmd/migrate` — applies `.sql` files with `multiStatements=true`.
 - `cmd/hashpw` — bcrypt helper.
 - `internal/config` — `.env` loader + `Config` (DSN, ListenAddr, SecureCookie, Google ids).
@@ -41,27 +53,65 @@ All tools read DB/API settings from `.env` via `internal/config` (literal values
 - `internal/services/quotation.go` — copies the master Sheets template, fills fixed
   cells (constants at top of file), exports PDF, stamps product image with pdfcpu.
 - `templates/*.html`, `static/js/app.js`, `static/css/style.css` — frontend.
+  Category pages: `category.html` + `catalog_parts.html` (fragments shared with
+  the API), `static/js/category.js`, `static/css/category.css`.
+- `migrations/` — incremental schema changes applied with `cmd/migrate`.
 - Root `*.go` scripts (`fill_prodcut.go`, `import_csv.go`, `add_user.go`,
   `dump_sample.go`) carry `//go:build ignore`; run each with `go run <file>`.
 
 ## Routes
 
-Public: `GET /` (→ /products), `GET|POST /login`, `POST /logout`.
-Auth (cookie `bt_session`): `GET /products`, `GET /product/:slug`,
-`POST /product/:slug/quote` (PDF, or `?format=json` → sheet URL),
-`GET /api/v1/products` (JSON page + facets). No registration, no roles.
+Public: `GET /` (→ /categories), `GET|POST /login`, `POST /logout`.
+
+Auth (cookie `bt_session`). No registration, no roles.
+- `GET /categories`: the 6 top-level tiles.
+- `GET /category/:slug`: a tile page or a leaf grid with filters.
+- `GET /api/v1/category/:slug?f_...[&page=N|&upto=N]`: `{count, bar, grid, more, page}`.
+- `GET /products` + `GET /api/v1/products`: the older search page across every product.
+- `GET /product/:slug`, `POST /product/:slug/quote` (PDF, or `?format=json` → sheet URL).
+
+## Category pages (Phase 1 of the live-site filter port)
+
+Spec: `bigtree_filters_and_product_cards_platform_neutral_brief.md`. Source rules:
+the snippets in `BigTree_Filters_Architecture_And_Snippets_*.md` (Data Layer v5,
+Tile Index v12, Leaf Grid v14, Fabrics v12, Add-on Categories). Annasta filters
+are excluded on purpose.
+
+- **Index:** built in memory at startup (about 1–2 min over the WAN; pages answer 503
+  until then). It is rebuilt in the background when the sync signature changes; the
+  old index serves meanwhile. Counts and options never use live SQL.
+- **Tops:** `furniture`, `floor-coverings`, `fabrics`, `wallcoverings`, `leathers`,
+  `lighting`. Per-top rules live at the top of `index.go`:
+  - `leathers` and `lighting` are flat (every product at once, Type as filter).
+  - In `floor-coverings`, a single child skips its level.
+  - Fabrics has 5 rule-based tiles; `drapery-fabrics` and `upholstery-fabrics` load 60 cards at a time.
+- **URL state:** `f_out`, `f_flame`, `f_style`, `f_type`, `f_mat`, `f_col`, `f_proj`,
+  `f_app`, `f_sel`, `f_mart`, `f_light`, `f_fire`. Filters are AND across facets and
+  OR within one. Each option count is the number of cards picking it would show.
+- **Colour versions** (`related_series_products`, hidden finishes that share category
+  and collection) become cards only under a Color filter. **Swatches** roll their
+  colours up into the lead.
+- **Not built yet (Phase 2):** the Selection, Collection and All Selections pages, the
+  Outdoor carry-over from them, and the card's "+" enquiry-list button (left out on purpose).
 
 ## Data model (schema.sql)
 
 - `products` — `id` = WooCommerce post ID; `parent_id` set for variations.
   Catalog lists only `parent_id IS NULL`. `slug` is UNIQUE.
-- `taxonomies` — free-form `type`: `category` (hierarchical via `parent_id`),
-  `collection` (B2B "X Selection", from WC tags), `brand`, `pa_*` attributes.
+  `status` (publish|private), `catalog_visibility` (search/hidden = hidden from the
+  catalog: colour versions and swatches), and `gallery` (JSON array of the images after
+  the first; the first is the card's hover image).
+- `taxonomies` — free-form `type`:
+  - `category`: hierarchical via `parent_id`.
+  - `collection`: the WordPress Selection > Collection tree, ids = WP term ids.
+  - `tag`: WC product tags.
+  - `brand` and `pa_*` attributes.
+
   UNIQUE(`type`, `slug`). `count` is a cached product count.
 - `product_taxonomy` — junction. `product_meta` — ACF/custom fields, shown raw on
   the product page.
 
-Catalog semantics (models/product.go):
+Search page semantics (`/products`, models/product.go; the category pages use `internal/catalog`):
 - Products link to their **leaf** category. Sidebar "Collections" = leaf categories;
   "Categories" = parents of those leaves.
 - Facets match taxonomy **names**, not slugs, so duplicate-named terms merge.
@@ -82,6 +132,13 @@ Catalog semantics (models/product.go):
     deletes products moved to trash, draft or pending.
   - `reconcile`: incremental, plus deleting local products whose id is gone from
     WC. It refuses to delete more than half of the catalog.
+- **Collections:** the WooCommerce API does not return the `collection` taxonomy.
+  The sync reads the term tree from `wp/v2/collection`, which is public. It reads each
+  product's links from `wp/v2/product?include=...&_fields=id,collection`. Private
+  products need a WordPress Application Password in `.env`: `WP_USERNAME` (or
+  `WP_USER`) and `WP_APP_PASSWORD`, plus optional `WP_SITE_URL` (defaults to
+  `WC_STORE_URL`). Without them, only published products get collections.
+- It also stores `status`, `catalog_visibility` and `gallery` (migration 002).
 - The last sync time is stored in table `sync_state` (key `woocommerce_last_sync`,
   RFC 3339 UTC). `full` writes it too. `incremental` fails until a sync time exists.
 - Writes are batched (100 products per statement set) and run in 6 workers.
@@ -105,8 +162,11 @@ Catalog semantics (models/product.go):
 
 ## Gotchas
 
-- **The DB in `.env` is the remote shared/production MariaDB.** No local DB exists.
+- **The DB in `.env` is the remote shared/production MySQL 8.0.** No local DB exists.
   Every script writes to it directly. `make db` wipes all data.
+- MySQL 8 has no `ADD COLUMN IF NOT EXISTS`. Make migrations re-runnable with an
+  `information_schema` check and `PREPARE`/`EXECUTE` (see `migrations/002_filters.sql`).
+  The isolation variable is `transaction_isolation`, not `tx_isolation`.
 - WAN latency is high (~100+ ms/query). Avoid per-row round trips. Preload into
   memory and batch inserts. Never recount `taxonomies.count` over the whole table
   inside a long transaction, because it holds locks and blocks other writers.

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .Title }} · Bigtree</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=9">
+  <link rel="stylesheet" href="/static/css/category.css?v=1">
+</head>
+<body>
+  <header class="site-header">
+    <a href="/categories" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
+    <div class="header-right">
+      <nav class="main-nav"><a href="/categories" class="is-on">Categories</a><a href="/products">Search</a></nav>
+      {{ if .User }}<span class="muted user-email">{{ .User.Email }}</span>{{ end }}
+      <form method="post" action="/logout"><button class="btn btn-ghost">Sign out</button></form>
+    </div>
+  </header>
+
+  <main class="cat-page">
+    {{ if .Crumbs }}
+    <nav class="crumbs" aria-label="Breadcrumb">
+      <a href="/categories">Categories</a>
+      {{ range .Crumbs }}<span aria-hidden="true">›</span><a href="/category/{{ .Slug }}">{{ .Name }}</a>{{ end }}
+    </nav>
+    {{ end }}
+
+    {{ with .Leaf }}
+      {{/* ================= LEAF: filter bar + product grid ================= */}}
+      <div class="bt-lg" id="bt-lg" data-slug="{{ .Cat.Slug }}" data-paged="{{ .Paged }}"
+           data-page="{{ .Page }}" data-more="{{ .HasMore }}">
+        <div class="bt-lg-head">
+          <div class="bt-lg-titlerow">
+            <h1>{{ .Cat.Name }}</h1>
+            <p class="bt-lg-count" id="bt-lg-count">{{ .Total }} {{ plural .Total "product" "products" }}</p>
+          </div>
+          <div class="bt-lg-barrow">
+            <div id="bt-lg-bar">{{ template "cat-bar" . }}</div>
+            <div class="bt-lg-view" role="group" aria-label="Grid size">
+              <button type="button" class="bt-lg-viewbtn is-on" data-view="small" aria-label="Small cards" title="Small cards">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1 1h4v4H1zM6 1h4v4H6zM11 1h4v4h-4zM1 6h4v4H1zM6 6h4v4H6zM11 6h4v4h-4zM1 11h4v4H1zM6 11h4v4H6zM11 11h4v4h-4z" fill="currentColor"/></svg>
+              </button>
+              <button type="button" class="bt-lg-viewbtn" data-view="big" aria-label="Big cards" title="Big cards">
+                <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M1 1h6v6H1zM9 1h6v6H9zM1 9h6v6H1zM9 9h6v6H9z" fill="currentColor"/></svg>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="bt-lg-grid" id="bt-lg-grid">{{ template "cat-cards" . }}</div>
+
+        {{ if .Paged }}
+        <div class="bt-lg-more" id="bt-lg-more" {{ if not .HasMore }}hidden{{ end }}>
+          <p class="bt-lg-status" id="bt-lg-status"></p>
+          <button type="button" class="btn btn-ghost" id="bt-lg-morebtn" hidden>Load more</button>
+        </div>
+        {{ end }}
+      </div>
+    {{ else }}
+      {{/* ================= TILES ================= */}}
+      <h1 class="cat-heading">{{ .Heading }}</h1>
+      <div class="cat-tiles">
+        {{ range .Tiles }}
+        <a class="cat-tile" href="/category/{{ .Slug }}">
+          <span class="cat-tile-media">
+            {{ if .Image }}<img src="{{ .Image }}" alt="" loading="lazy" decoding="async">{{ end }}
+          </span>
+          <span class="cat-tile-name">{{ .Name }}</span>
+          <span class="cat-tile-count">{{ .Count }} {{ plural .Count "product" "products" }}</span>
+        </a>
+        {{ else }}
+        <p class="empty">No categories with products.</p>
+        {{ end }}
+      </div>
+    {{ end }}
+  </main>
+
+  {{ if .Leaf }}<script src="/static/js/category.js?v=1"></script>{{ end }}
+</body>
+</html>

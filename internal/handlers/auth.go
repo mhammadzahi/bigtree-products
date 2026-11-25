@@ -26,7 +26,7 @@ func (h *Handler) Login(c *gin.Context) {
 		return
 	}
 
-	h.startSession(c, user, "/products")
+	h.startSession(c, user, "/categories")
 }
 
 // startSession creates the DB session, sets the cookie and redirects.

@@ -1,0 +1,157 @@
+/* ============================================================================
+   Category pages: tiles, leaf filter bar, product cards.
+   Port of the live site's Tile Index v12 / Leaf Grid v14 look and behaviour.
+   ========================================================================== */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.cat-page { max-width: 1440px; margin: 0 auto; padding: 1.25rem 1.5rem 4rem; }
+.crumbs { display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; font-size: .85rem; color: var(--ink-soft); margin-bottom: .75rem; }
+.crumbs a { color: var(--ink-soft); }
+.cat-heading { font-size: 1.6rem; margin: .25rem 0 1.25rem; }
+
+/* ---------- Tiles --------------------------------------------------------- */
+.cat-tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 24px; }
+.cat-tile { display: flex; flex-direction: column; gap: .35rem; color: var(--ink); }
+.cat-tile:hover { text-decoration: none; }
+.cat-tile-media {
+  display: grid; place-items: center; aspect-ratio: 1; background: var(--surface);
+  border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line);
+}
+.cat-tile-media img { width: 100%; height: 100%; object-fit: contain; transition: transform .3s; }
+.cat-tile:hover .cat-tile-media img { transform: scale(1.03); }
+.cat-tile-name { font-weight: 700; }
+.cat-tile-count { font-size: .85rem; color: var(--ink-soft); }
+
+/* ---------- Leaf header + bar -------------------------------------------- */
+.bt-lg-head {
+  position: sticky; top: 0; z-index: 20; background: var(--bg);
+  padding: .5rem 0 .75rem; margin-bottom: .75rem; border-bottom: 1px solid var(--line);
+}
+.bt-lg-titlerow { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; }
+.bt-lg-titlerow h1 { font-size: 1.5rem; margin: 0; }
+.bt-lg-count { margin: 0; color: var(--ink-soft); font-size: .9rem; }
+.bt-lg-barrow { display: flex; gap: 1rem; align-items: flex-start; justify-content: space-between; margin-top: .6rem; }
+#bt-lg-bar { flex: 1; min-width: 0; position: relative; }
+.bt-lg-bar { display: flex; flex-wrap: wrap; gap: .5rem; }
+
+.bt-lg-pill {
+  display: inline-flex; align-items: center; gap: .45rem; padding: .45rem .8rem;
+  border: 1px solid var(--line); border-radius: 999px; background: var(--surface);
+  font: inherit; font-size: .88rem; font-weight: 600; color: var(--ink); cursor: pointer; white-space: nowrap;
+}
+.bt-lg-pill:hover { border-color: var(--ink-soft); text-decoration: none; }
+.bt-lg-pill.is-on { border-color: var(--brand); color: var(--brand-ink); background: var(--accent); }
+.bt-lg-n { font-weight: 500; color: var(--ink-soft); font-size: .8rem; }
+
+.bt-lg-switch-knob {
+  width: 26px; height: 15px; border-radius: 999px; background: #cfd4dc; position: relative; transition: background .15s;
+}
+.bt-lg-switch-knob::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%;
+  background: #fff; transition: transform .15s;
+}
+.bt-lg-switch.is-on .bt-lg-switch-knob { background: var(--brand); }
+.bt-lg-switch.is-on .bt-lg-switch-knob::after { transform: translateX(11px); }
+
+.bt-lg-dd { position: relative; }
+.bt-lg-dd-on {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px;
+  border-radius: 999px; background: var(--brand); color: #fff; font-size: .72rem;
+}
+.bt-lg-caret { transition: transform .15s; }
+.bt-lg-dd.is-open .bt-lg-caret { transform: rotate(180deg); }
+.bt-lg-dd-panel {
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; min-width: 230px; max-width: 340px;
+  max-height: 360px; overflow-y: auto; padding: .4rem; background: var(--surface);
+  border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow-lg);
+}
+.bt-lg-dd-panel.is-right { left: auto; right: 0; }
+.bt-lg-opt {
+  display: flex; align-items: center; gap: .55rem; padding: .45rem .55rem; border-radius: 7px;
+  color: var(--ink); font-size: .88rem;
+}
+.bt-lg-opt:hover { background: var(--bg); text-decoration: none; }
+.bt-lg-optlabel { flex: 1; }
+.bt-lg-check {
+  width: 16px; height: 16px; border: 1.5px solid #b8bfca; border-radius: 4px; flex: none; position: relative;
+}
+.bt-lg-check.is-radio { border-radius: 50%; }
+.bt-lg-opt.is-on .bt-lg-check { background: var(--brand); border-color: var(--brand); }
+.bt-lg-opt.is-on .bt-lg-check::after {
+  content: ""; position: absolute; left: 4px; top: 1px; width: 4px; height: 8px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+.bt-lg-dot { width: 14px; height: 14px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,.15); }
+
+.bt-lg-chips { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .6rem; align-items: center; }
+.bt-lg-chip {
+  display: inline-flex; gap: .35rem; align-items: center; padding: .25rem .6rem; border-radius: 999px;
+  background: var(--accent); color: var(--brand-ink); font-size: .8rem; font-weight: 600;
+}
+.bt-lg-chip:hover { text-decoration: none; background: #ead9e3; }
+.bt-lg-clear { font-size: .8rem; color: var(--ink-soft); text-decoration: underline; margin-left: .25rem; }
+
+.bt-lg-view { display: flex; gap: .25rem; flex: none; }
+.bt-lg-viewbtn {
+  display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--surface); color: var(--ink-soft); cursor: pointer;
+}
+.bt-lg-viewbtn.is-on { color: var(--brand); border-color: var(--brand); }
+
+/* ---------- Grid + cards -------------------------------------------------- */
+.bt-lg-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 24px; transition: opacity .15s; }
+.bt-lg.is-big .bt-lg-grid { grid-template-columns: repeat(2, 1fr); }
+.bt-lg.is-loading .bt-lg-grid { opacity: .45; pointer-events: none; }
+.bt-lg-empty { grid-column: 1 / -1; }
+
+.bt-card { display: flex; flex-direction: column; gap: .45rem; }
+.bt-card-media { position: relative; overflow: hidden; border-radius: 8px; background: var(--surface); }
+.bt-card-link { display: block; }
+/* Whole photo at its true proportion: no stretch, no crop, no grey frame. */
+.bt-card-img { width: 100%; height: auto; object-fit: contain; object-position: center; }
+.bt-card-media .media-placeholder {
+  display: grid; place-items: center; aspect-ratio: 1; color: var(--ink-soft); font-size: .85rem;
+}
+.bt-hover-img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: var(--surface);
+  opacity: 0; transition: opacity .25s; pointer-events: none;
+}
+.bt-card-media.bt-hv-ready:hover .bt-hover-img,
+.bt-card-media.bt-hv-ready:has(:focus-visible) .bt-hover-img { opacity: 1; }
+
+.bt-tag-outdoor, .bt-tag-private {
+  position: absolute; top: 8px; z-index: 3; padding: 3px 9px; border-radius: 999px;
+  font: 600 11px/1.3 var(--font); text-transform: uppercase; letter-spacing: .03em; color: #fff;
+}
+.bt-tag-outdoor { left: 8px; background: #111; opacity: 0; transition: opacity .15s; }
+.bt-card:hover .bt-tag-outdoor, .bt-card:focus-within .bt-tag-outdoor { opacity: 1; }
+.bt-tag-private { right: 8px; background: #d63638; }
+
+.bt-card-download {
+  position: absolute; right: 8px; bottom: 8px; z-index: 3; width: 30px; height: 30px;
+  display: grid; place-items: center; border: 0; border-radius: 50%; cursor: pointer;
+  background: rgba(255,255,255,.75); color: var(--ink); opacity: 0; transition: opacity .15s;
+}
+.bt-card:hover .bt-card-download, .bt-card:focus-within .bt-card-download { opacity: 1; }
+.bt-card-download.is-loading { opacity: 1; cursor: progress; }
+@media (hover: none) { .bt-card-download { opacity: 1; } }
+
+.bt-card-name { margin: 0; font-size: .92rem; font-weight: 600; line-height: 1.3; }
+.bt-card-name a { color: var(--ink); }
+.bt-card-coll { font-size: .8rem; color: var(--ink-soft); }
+
+.bt-lg-more { display: grid; justify-items: center; gap: .5rem; padding: 2rem 0; }
+.bt-lg-status { margin: 0; color: var(--ink-soft); font-size: .85rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .bt-hover-img, .cat-tile-media img, .bt-lg-switch-knob::after { transition: none; }
+}
+@media (max-width: 640px) {
+  .cat-page { padding: 1rem 16px 3rem; }
+  .bt-lg-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+  .bt-lg.is-big .bt-lg-grid { grid-template-columns: 1fr; }
+  .bt-lg-dd { position: static; }
+  .bt-lg-dd-panel { left: 0; right: 0; max-width: none; }
+  .bt-lg-head { position: static; }
+  .main-nav { display: none; }
+}

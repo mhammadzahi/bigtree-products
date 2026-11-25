@@ -1,0 +1,76 @@
+{{/*
+  Fragments of the leaf category page. Rendered inside category.html on the
+  first load and on their own by the JSON API (/api/v1/category/:slug), so the
+  first paint and every filter change produce identical markup.
+  Every option is a real link (?f_...), so the bar also works without JS.
+*/}}
+
+{{ define "cat-bar" }}
+{{ $f := .Filter }}
+<div class="bt-lg-bar">
+  {{ range .Bar.Facets }}
+    {{ if .Switch }}
+      <a class="bt-lg-pill bt-lg-switch{{ if .On }} is-on{{ end }}" href="{{ qhref ($f.Toggle .Key "1") }}"
+         data-q="{{ $f.Toggle .Key "1" }}" role="switch" aria-checked="{{ .On }}">
+        <span class="bt-lg-switch-knob" aria-hidden="true"></span>{{ .Label }}<span class="bt-lg-n">{{ .Count }}</span>
+      </a>
+    {{ else }}
+      {{ $fc := . }}
+      <div class="bt-lg-dd" data-facet="{{ .Key }}">
+        <button type="button" class="bt-lg-pill bt-lg-dd-btn{{ if .Selected }} is-on{{ end }}" aria-expanded="false">
+          {{ .Label }}{{ if .Selected }}<span class="bt-lg-dd-on">{{ .Selected }}</span>{{ end }}
+          <svg class="bt-lg-caret" viewBox="0 0 10 6" width="10" height="6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        </button>
+        <div class="bt-lg-dd-panel" hidden>
+          {{ range .Options }}
+          <a class="bt-lg-opt{{ if .Selected }} is-on{{ end }}" href="{{ qhref ($f.Toggle $fc.Key .Value) }}"
+             data-q="{{ $f.Toggle $fc.Key .Value }}" role="{{ if $fc.Single }}menuitemradio{{ else }}menuitemcheckbox{{ end }}"
+             aria-checked="{{ .Selected }}">
+            <span class="bt-lg-check{{ if $fc.Single }} is-radio{{ end }}" aria-hidden="true"></span>
+            {{ if .Swatch }}<span class="bt-lg-dot" style="background: {{ safeCSS .Swatch }}"></span>{{ end }}
+            <span class="bt-lg-optlabel">{{ .Label }}</span><span class="bt-lg-n">{{ .Count }}</span>
+          </a>
+          {{ end }}
+        </div>
+      </div>
+    {{ end }}
+  {{ end }}
+</div>
+{{ if .Bar.Chips }}
+<div class="bt-lg-chips">
+  {{ range .Bar.Chips }}
+  <a class="bt-lg-chip" href="{{ qhref .Query }}" data-q="{{ .Query }}">{{ .Label }} <span aria-hidden="true">×</span><span class="sr-only">Remove filter</span></a>
+  {{ end }}
+  <a class="bt-lg-clear" href="?" data-q="">Clear all</a>
+</div>
+{{ end }}
+{{ end }}
+
+{{ define "cat-cards" }}
+{{ range .Cards }}{{ template "cat-card" . }}{{ else }}
+{{ if eq .Page 1 }}<p class="empty bt-lg-empty">No products match these filters.</p>{{ end }}
+{{ end }}
+{{ end }}
+
+{{ define "cat-card" }}
+<article class="bt-card" data-id="{{ .ID }}"{{ if .Outdoor }} data-outdoor="1"{{ end }}>
+  <div class="bt-card-media"{{ if .Hover }} data-hover-src="{{ .Hover }}"{{ end }}>
+    {{ if .Outdoor }}<span class="bt-tag-outdoor">Outdoor</span>{{ end }}
+    {{ if .Private }}<span class="bt-tag-private">Private</span>{{ end }}
+    <a class="bt-card-link" href="/product/{{ .Slug }}" tabindex="-1" aria-hidden="true">
+      {{ if .Image }}<img class="bt-card-img" src="{{ .Image }}" alt="{{ .Title }}" loading="lazy" decoding="async">
+      {{ else }}<span class="media-placeholder">No image</span>{{ end }}
+    </a>
+    {{ if .Image }}
+    <button type="button" class="bt-card-download" data-src="{{ .Image }}" data-name="{{ downloadName .Title .ID }}"
+            aria-label="Download image" title="Download image">
+      <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M8 1v9m0 0L4.5 6.5M8 10l3.5-3.5M2 14h12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    {{ end }}
+  </div>
+  <div class="bt-card-info">
+    <h3 class="bt-card-name"><a href="/product/{{ .Slug }}">{{ .Title }}</a></h3>
+    {{ if .Coll }}<div class="bt-card-coll">{{ .Coll }}</div>{{ end }}
+  </div>
+</article>
+{{ end }}

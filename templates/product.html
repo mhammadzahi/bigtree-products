@@ -4,12 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} · Bigtree</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=8">
+  <link rel="stylesheet" href="/static/css/style.css?v=9">
 </head>
 <body>
   <header class="site-header">
-    <a href="/products" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
+    <a href="/categories" class="brand"><span class="brand-mark">B</span> Bigtree <em>Products</em></a>
     <div class="header-right">
+      <nav class="main-nav"><a href="/categories">Categories</a><a href="/products">Search</a></nav>
       {{ if .User }}<span class="muted user-email">{{ .User.Email }}</span>{{ end }}
       <form method="post" action="/logout"><button class="btn btn-ghost">Sign out</button></form>
     </div>

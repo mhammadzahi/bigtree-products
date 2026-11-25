@@ -319,3 +319,9 @@ img { max-width: 100%; display: block; }
 @media (max-width: 560px) {
   .product-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- Main navigation (Categories / Search) ------------------------- */
+.main-nav { display: flex; gap: .25rem; margin-right: .5rem; }
+.main-nav a { padding: .4rem .7rem; border-radius: 8px; color: var(--ink-soft); font-weight: 600; font-size: .9rem; }
+.main-nav a:hover, .main-nav a.is-on { background: var(--accent); color: var(--brand-ink); text-decoration: none; }
+@media (max-width: 640px) { .main-nav { display: none; } }
