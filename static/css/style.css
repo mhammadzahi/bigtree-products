@@ -293,6 +293,7 @@ img { max-width: 100%; display: block; }
 }
 .kv-table th { width: 220px; color: var(--ink-soft); font-weight: 600; white-space: nowrap; }
 .kv-table.meta th { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .85rem; }
+.kv-table.meta td { overflow-wrap: anywhere; line-height: 1.55; }
 .data-table thead th { color: var(--ink-soft); font-weight: 700; background: var(--bg); }
 .data-table tbody tr:hover { background: var(--accent); }
 

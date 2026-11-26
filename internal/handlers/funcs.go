@@ -35,6 +35,17 @@ func TemplateFuncs() template.FuncMap {
 		"qhref":        func(q string) template.URL { return template.URL("?" + q) },
 		"label":        prettyLabel,
 		"downloadName": DownloadName,
+		// lines splits a multi-line custom-field value into its non-blank
+		// lines (editors often leave whitespace-only lines between items).
+		"lines": func(s string) []string {
+			var out []string
+			for _, l := range strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n") {
+				if l = strings.TrimSpace(l); l != "" {
+					out = append(out, l)
+				}
+			}
+			return out
+		},
 		"plural": func(n int, one, many string) string {
 			if n == 1 {
 				return one

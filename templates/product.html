@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{{ .Title }} · Bigtree</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=9">
+  <link rel="stylesheet" href="/static/css/style.css?v=10">
 </head>
 <body>
   <header class="site-header">
@@ -107,6 +107,14 @@
       </table>
     </section>
 
+    <!-- ===== Description (right above the taxonomies) ===== -->
+    {{ if .Product.Description }}
+    <section class="info-panel">
+      <h2>Description</h2>
+      <div class="rich-text">{{ safeHTML .Product.Description }}</div>
+    </section>
+    {{ end }}
+
     <!-- ===== Taxonomies (categories, collections, attributes, custom) ===== -->
     {{ if .Product.Taxonomies }}
     <section class="info-panel">
@@ -131,7 +139,7 @@
           <thead><tr><th>Field</th><th>Value</th></tr></thead>
           <tbody>
             {{ range .Product.Meta }}
-            <tr><th>{{ label .Key }}</th><td>{{ .Value }}</td></tr>
+            <tr><th>{{ label .Key }}</th><td>{{ range $i, $l := lines .Value }}{{ if $i }}<br>{{ end }}{{ $l }}{{ end }}</td></tr>
             {{ end }}
           </tbody>
         </table>
@@ -157,14 +165,6 @@
           </tbody>
         </table>
       </div>
-    </section>
-    {{ end }}
-
-    <!-- ===== Description ===== -->
-    {{ if .Product.Description }}
-    <section class="info-panel">
-      <h2>Description</h2>
-      <div class="rich-text">{{ safeHTML .Product.Description }}</div>
     </section>
     {{ end }}
   </main>
